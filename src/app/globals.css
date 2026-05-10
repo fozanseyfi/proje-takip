@@ -72,10 +72,27 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg);
   background-image:
-    radial-gradient(ellipse 80% 60% at 20% -20%, rgba(61, 142, 240, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(0, 212, 255, 0.04) 0%, transparent 50%);
+    radial-gradient(ellipse 90% 60% at 15% -10%, rgba(61, 142, 240, 0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 110%, rgba(0, 212, 255, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 30% at 50% 50%, rgba(179, 136, 255, 0.03) 0%, transparent 70%);
   background-attachment: fixed;
+}
+
+/* Subtle grid pattern overlay (mesh) */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 0%, black 0%, transparent 70%);
 }
 
 /* Form öğeleri için varsayılan stil */
@@ -112,3 +129,80 @@ input[type="number"] {
   background: linear-gradient(135deg, rgba(18, 28, 48, 0.7) 0%, rgba(13, 21, 38, 0.7) 100%);
   border: 1px solid rgba(30, 45, 80, 0.5);
 }
+
+/* Toast slide-in animation */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-toast-in {
+  animation: slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Subtle fade-in */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Slide-up with fade */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-slide-up-delay-1 { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+.animate-slide-up-delay-2 { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+.animate-slide-up-delay-3 { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+.animate-slide-up-delay-4 { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both; }
+
+/* Pulse glow for kritik state */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 69, 96, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 69, 96, 0); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Logo shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, #e8eeff 0%, #00d4ff 50%, #e8eeff 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 4s ease-in-out infinite;
+}
+
+/* Subtle gradient border */
+.gradient-border {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.4), transparent 50%, rgba(61, 142, 240, 0.2));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+/* Ensure content z-index over mesh background */
+main, header, aside, nav, footer { position: relative; z-index: 1; }

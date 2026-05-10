@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { HardHat, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,7 @@ export default function PersonnelAttendancePage() {
   const [draft, setDraft] = useState<Record<string, Draft>>({});
 
   // İlk yükte veya tarih değişince draft'ı yenile
-  useMemo(() => {
+  useEffect(() => {
     const d: Record<string, Draft> = {};
     for (const p of assignedPersonnel) {
       const ex = existingAttendance.get(p.id);
@@ -70,6 +71,8 @@ export default function PersonnelAttendancePage() {
     setDraft((s) => ({ ...s, [id]: { ...s[id], hours } }));
   }
 
+  const toast = useToast((s) => s.push);
+
   function save() {
     if (!project || !user) return;
     const records = assignedPersonnel.map((p) => ({
@@ -81,7 +84,7 @@ export default function PersonnelAttendancePage() {
       recordedBy: user.id,
     }));
     setAttendance(records);
-    alert(`${records.length} kayıt güncellendi.`);
+    toast(`${records.length} personel puantajı kaydedildi`, "success");
   }
 
   function shiftDate(delta: number) {

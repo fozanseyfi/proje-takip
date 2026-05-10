@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Truck, ChevronLeft, ChevronRight, Cog } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function MachineAttendancePage() {
   type Draft = { present: boolean; hours: number; fuelConsumed?: number };
   const [draft, setDraft] = useState<Record<string, Draft>>({});
 
-  useMemo(() => {
+  useEffect(() => {
     const d: Record<string, Draft> = {};
     for (const m of assigned) {
       d[m.id] = existing.get(m.id) ?? { present: true, hours: 9 };
@@ -66,6 +67,8 @@ export default function MachineAttendancePage() {
     setDraft((s) => ({ ...s, [id]: { ...s[id], fuelConsumed: fuel } }));
   }
 
+  const toast = useToast((s) => s.push);
+
   function save() {
     if (!project || !user) return;
     const records = assigned.map((m) => ({
@@ -78,7 +81,7 @@ export default function MachineAttendancePage() {
       recordedBy: user.id,
     }));
     setAttendance(records);
-    alert(`${records.length} kayıt güncellendi.`);
+    toast(`${records.length} makine puantajı kaydedildi`, "success");
   }
 
   function shift(delta: number) {

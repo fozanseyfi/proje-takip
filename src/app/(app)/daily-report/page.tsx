@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FileText,
   ChevronLeft,
@@ -14,6 +14,7 @@ import {
   Save,
 } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ export default function DailyReportPage() {
   const [workStoppedReason, setWorkStoppedReason] = useState("");
 
   // Tarihten existing'i ilkleme — state'i resetle
-  useMemo(() => {
+  useEffect(() => {
     setSummary(existing?.summary ?? "");
     setIssues(existing?.issues ?? "");
     setTomorrowPlan(existing?.tomorrowPlan ?? "");
@@ -101,6 +102,8 @@ export default function DailyReportPage() {
     setPhotos((p) => p.filter((_, i) => i !== idx));
   }
 
+  const toast = useToast((s) => s.push);
+
   function save() {
     if (!project || !user) return;
     const w = weather;
@@ -120,7 +123,7 @@ export default function DailyReportPage() {
       photos,
       createdBy: user.id,
     });
-    alert("Rapor kaydedildi.");
+    toast("Günlük rapor kaydedildi", "success");
   }
 
   function shift(delta: number) {

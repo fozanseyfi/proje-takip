@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Settings, Save, Trash2 } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,8 @@ export default function SettingsPage() {
       </Card>
     );
 
+  const toast = useToast((s) => s.push);
+
   function save() {
     if (!project) return;
     let plannedEnd = form.plannedEnd;
@@ -37,7 +40,7 @@ export default function SettingsPage() {
       plannedEnd = toISODate(addDays(form.startDate, form.durationDays));
     }
     updateProject(project.id, { ...form, plannedEnd });
-    alert("Ayarlar kaydedildi.");
+    toast("Proje ayarları kaydedildi", "success");
   }
 
   return (

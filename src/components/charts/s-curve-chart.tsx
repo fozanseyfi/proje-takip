@@ -54,8 +54,8 @@ export function SCurveChart({
               fontSize: 12,
             }}
             labelFormatter={(d) => formatDate(d as string)}
-            formatter={(v: number, name) => [
-              v != null ? `${v.toFixed(1)}%` : "—",
+            formatter={(v, name) => [
+              typeof v === "number" && !isNaN(v) ? `${v.toFixed(1)}%` : "—",
               name === "planPct" ? "Planlanan" : "Gerçekleşen",
             ]}
           />

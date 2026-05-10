@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, FolderKanban, MapPin, Calendar } from "lucide-react";
+import { Plus, FolderKanban, MapPin, Calendar, ArrowRight, Sun } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/layout/page-header";
@@ -68,17 +69,31 @@ export default function ProjectsPage() {
       />
 
       {projects.length === 0 ? (
-        <Card>
+        <Card className="text-center py-12">
+          <FolderKanban size={36} className="mx-auto text-text3 mb-3" />
           <CardTitle>Henüz proje yok</CardTitle>
-          <p className="text-sm text-text2">İlk projeni oluşturmak için yukarıdaki butonu kullan.</p>
+          <p className="text-sm text-text2 mb-4">İlk projeni oluşturmak için aşağıdaki butonu kullan.</p>
+          <Button variant="accent" onClick={() => setOpen(true)}>
+            <Plus size={14} /> İlk Projeyi Oluştur
+          </Button>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => (
-            <Card key={p.id} className="hover:border-accent/40">
+          {projects.map((p, i) => (
+            <Card
+              key={p.id}
+              className={cn(
+                "hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)] transition-all duration-300",
+                "animate-slide-up",
+                i === 0 && "animate-slide-up-delay-1",
+                i === 1 && "animate-slide-up-delay-2",
+                i === 2 && "animate-slide-up-delay-3",
+                i >= 3 && "animate-slide-up-delay-4"
+              )}
+            >
               <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-display font-bold text-lg text-text mb-1">{p.name}</div>
+                <div className="min-w-0">
+                  <div className="font-display font-bold text-lg text-text mb-1 truncate">{p.name}</div>
                   <div className="flex items-center gap-1 text-xs text-text3">
                     <MapPin size={12} />
                     {p.location}
@@ -90,46 +105,49 @@ export default function ProjectsPage() {
                   {p.status}
                 </Badge>
               </div>
-              <div className="space-y-1.5 text-xs text-text2 mb-4">
+              <div className="space-y-2 text-xs text-text2 mb-4">
                 <div className="flex items-center gap-2">
                   <Calendar size={12} className="text-text3" />
                   <span>
-                    {formatDate(p.startDate)} → {formatDate(p.plannedEnd)} ({p.durationDays} gün)
+                    {formatDate(p.startDate)} → {formatDate(p.plannedEnd)}
                   </span>
+                  <span className="text-text3 ml-auto font-mono">{p.durationDays}g</span>
                 </div>
                 {p.installedCapacityMw != null && (
-                  <div>
-                    <span className="text-text3">Kurulu Güç: </span>
-                    <span className="font-mono">{p.installedCapacityMw} MW</span>
+                  <div className="flex items-center gap-2">
+                    <Sun size={12} className="text-yellow" />
+                    <span className="text-text3">Kurulu Güç</span>
+                    <span className="font-mono text-text ml-auto">{p.installedCapacityMw} MW</span>
                   </div>
                 )}
                 {p.totalBudget != null && (
-                  <div>
-                    <span className="text-text3">Bütçe: </span>
-                    <span className="font-mono">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 inline-flex items-center justify-center text-text3 text-[10px]">₺</span>
+                    <span className="text-text3">Bütçe</span>
+                    <span className="font-mono text-text ml-auto">
                       {p.totalBudget.toLocaleString("tr-TR")} {p.budgetCurrency}
                     </span>
                   </div>
                 )}
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="accent"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => {
-                    setCurrentProject(p.id);
-                  }}
-                >
-                  Aktif yap
-                </Button>
-                <Link href="/dashboard" className="contents">
+                <Link href="/dashboard" className="flex-1">
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setCurrentProject(p.id)}
+                  >
+                    Aç <ArrowRight size={12} />
+                  </Button>
+                </Link>
+                <Link href="/settings">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setCurrentProject(p.id)}
                   >
-                    Aç →
+                    Ayarlar
                   </Button>
                 </Link>
               </div>
