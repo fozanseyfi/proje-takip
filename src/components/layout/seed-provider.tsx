@@ -1,0 +1,40 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useStore } from "@/lib/store";
+
+/**
+ * Zustand persist client-side hydrate olur. İlk yükte boşsa seed ekle.
+ * Hydration tamamlanana kadar children'ı render etme — flicker'ı önler.
+ */
+export function SeedProvider({ children }: { children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const unsub = useStore.persist.onFinishHydration(() => {
+      useStore.getState().seedIfEmpty();
+      setHydrated(true);
+    });
+
+    if (useStore.persist.hasHydrated()) {
+      useStore.getState().seedIfEmpty();
+      setHydrated(true);
+    }
+
+    return () => unsub();
+    // Dependency array boş — bu effect sadece mount'ta çalışır
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-text3 text-sm font-mono tracking-wider animate-pulse">
+          YÜKLENİYOR...
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}

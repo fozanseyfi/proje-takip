@@ -1,26 +1,114 @@
 @import "tailwindcss";
 
+/* ================================================================
+   GES Proje Takip - Dark + Cyan Tema
+   HTML referansından port edildi: docs/GES_Proje_Takip_Sistemi_v3.html
+================================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #050810;
+  --bg2: #080d18;
+  --bg3: #0d1526;
+  --bg4: #121c30;
+  --border: #162040;
+  --border2: #1e2d50;
+  --accent: #00d4ff;
+  --accent2: #0099cc;
+  --accent3: #ff6b35;
+  --blue: #3d8ef0;
+  --blue2: #2563b0;
+  --green: #00e676;
+  --red: #ff4560;
+  --yellow: #ffd740;
+  --purple: #b388ff;
+  --text: #e8eeff;
+  --text2: #8899cc;
+  --text3: #4a5a80;
+  --planned: #3d8ef0;
+  --realized: #00e676;
+  --critical: #ff4560;
+  --spi-good: #00e676;
+  --spi-warn: #ffd740;
+  --spi-bad: #ff4560;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-bg3: var(--bg3);
+  --color-bg4: var(--bg4);
+  --color-border: var(--border);
+  --color-border2: var(--border2);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent2);
+  --color-accent3: var(--accent3);
+  --color-blue: var(--blue);
+  --color-blue2: var(--blue2);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-purple: var(--purple);
+  --color-text: var(--text);
+  --color-text2: var(--text2);
+  --color-text3: var(--text3);
+  --color-planned: var(--planned);
+  --color-realized: var(--realized);
+  --color-critical: var(--critical);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 20% -20%, rgba(61, 142, 240, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(0, 212, 255, 0.04) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Form öğeleri için varsayılan stil */
+input, select, textarea, button {
+  font-family: inherit;
+  color: inherit;
+}
+
+input[type="number"] {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+
+/* Yardımcı utility'ler */
+.glow-cyan { box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); }
+.glow-blue { box-shadow: 0 0 20px rgba(61, 142, 240, 0.3); }
+.glow-green { box-shadow: 0 0 20px rgba(0, 230, 118, 0.3); }
+
+.text-glow-cyan { text-shadow: 0 0 20px rgba(0, 212, 255, 0.5); }
+
+/* Glassmorphism panel */
+.glass {
+  background: linear-gradient(135deg, rgba(13, 21, 38, 0.9) 0%, rgba(8, 13, 24, 0.9) 100%);
+  border: 1px solid rgba(30, 45, 80, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.glass-light {
+  background: linear-gradient(135deg, rgba(18, 28, 48, 0.7) 0%, rgba(13, 21, 38, 0.7) 100%);
+  border: 1px solid rgba(30, 45, 80, 0.5);
 }
