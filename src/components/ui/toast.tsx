@@ -2,7 +2,6 @@
 
 import { create } from "zustand";
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
-import { useEffect } from "react";
 import { cn, uid } from "@/lib/utils";
 
 type ToastVariant = "success" | "error" | "warning" | "info";
@@ -30,7 +29,7 @@ export const useToast = create<ToastState>((set, get) => ({
   dismiss: (id) => set((s) => ({ items: s.items.filter((t) => t.id !== id) })),
 }));
 
-const ICON: Record<ToastVariant, React.ComponentType<{ size?: number }>> = {
+const ICON: Record<ToastVariant, React.ComponentType<{ size?: number; className?: string }>> = {
   success: CheckCircle2,
   error: XCircle,
   warning: AlertTriangle,
@@ -38,10 +37,10 @@ const ICON: Record<ToastVariant, React.ComponentType<{ size?: number }>> = {
 };
 
 const STYLES: Record<ToastVariant, string> = {
-  success: "bg-green/10 border-green/40 text-green",
-  error: "bg-red/10 border-red/40 text-red",
-  warning: "bg-yellow/10 border-yellow/40 text-yellow",
-  info: "bg-accent/10 border-accent/40 text-accent",
+  success: "border-green/30 [&_svg]:text-green",
+  error: "border-red/30 [&_svg]:text-red",
+  warning: "border-yellow/40 [&_svg]:text-yellow",
+  info: "border-accent/30 [&_svg]:text-accent",
 };
 
 export function Toaster() {
@@ -56,13 +55,13 @@ export function Toaster() {
           <div
             key={t.id}
             className={cn(
-              "min-w-[260px] max-w-md flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg border backdrop-blur-md text-sm",
-              "pointer-events-auto shadow-2xl animate-toast-in bg-bg2/95",
+              "min-w-[280px] max-w-md flex items-start gap-3 px-4 py-3 rounded-xl border bg-white text-sm",
+              "pointer-events-auto shadow-large animate-toast-in",
               STYLES[t.variant]
             )}
           >
-            <Icon size={16} />
-            <div className="flex-1 text-text">{t.message}</div>
+            <Icon size={16} className="shrink-0 mt-0.5" />
+            <div className="flex-1 text-text font-medium">{t.message}</div>
             <button
               onClick={() => dismiss(t.id)}
               className="text-text3 hover:text-text -mr-1 -my-0.5 p-0.5"
@@ -74,9 +73,4 @@ export function Toaster() {
       })}
     </div>
   );
-}
-
-// Auto-mount hook (for testing)
-export function useAutoMount() {
-  useEffect(() => {}, []);
 }

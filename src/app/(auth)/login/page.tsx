@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight, Sparkles, ShieldCheck } from "lucide-react";
+import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { Logo, LogoMark } from "@/components/brand/logo";
+import { Logo } from "@/components/brand/logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,11 +16,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_1fr] gap-8 lg:gap-12 items-center animate-fade-in">
+    <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_1fr] gap-8 lg:gap-16 items-center animate-fade-in">
       {/* Left side: brand panel */}
       <div className="hidden lg:flex flex-col gap-6">
-        <Logo size={48} textClassName="text-2xl tracking-[4px]" />
-        <h1 className="font-display text-4xl xl:text-5xl font-extrabold text-text leading-tight">
+        <Logo size={44} textClassName="text-xl tracking-[2.5px]" />
+        <h1 className="font-display text-4xl xl:text-5xl font-extrabold text-text leading-tight tracking-tight">
           GES projelerini <br />
           <span className="text-shimmer">tek platformda</span> yönet
         </h1>
@@ -34,31 +34,29 @@ export default function LoginPage() {
           <Feature label="Mobil Saha" />
           <Feature label="Çoklu Proje" />
         </div>
-        <div className="flex items-center gap-2 mt-6 text-xs text-text3">
+        <div className="flex items-center gap-2 mt-4 text-xs text-text3">
           <ShieldCheck size={14} className="text-green" />
-          KVKK uyumlu · RLS ile güvenli erişim · Audit log
+          KVKK uyumlu · Rol bazlı yetkilendirme · Audit log
         </div>
       </div>
 
       {/* Right side: form panel */}
       <div className="relative">
-        {/* Decorative glow */}
-        <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-accent/20 via-blue/10 to-transparent blur-xl opacity-60 pointer-events-none" />
+        <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-accent/10 via-transparent to-accent3/10 blur-2xl opacity-60 pointer-events-none" />
 
-        <div className="relative rounded-2xl bg-gradient-to-br from-bg3/95 via-bg2/95 to-bg2/95 border border-border2 p-7 sm:p-8 shadow-[0_20px_80px_-20px_rgba(0,0,0,0.6)] backdrop-blur-md">
-          {/* Mobile-only logo */}
+        <div className="relative rounded-2xl bg-white border border-border p-7 sm:p-8 shadow-large">
           <div className="lg:hidden mb-6 flex justify-center">
-            <Logo size={36} textClassName="text-xl tracking-[3px]" />
+            <Logo size={36} textClassName="text-lg tracking-[2px]" />
           </div>
 
           <div className="flex items-center gap-2 mb-2">
             <Sparkles size={14} className="text-accent" />
-            <span className="text-[10px] font-display tracking-[3px] uppercase text-accent">
+            <span className="text-[10px] font-display tracking-[2px] uppercase text-accent font-bold">
               Hoş Geldin
             </span>
           </div>
-          <h2 className="font-display text-2xl font-extrabold mb-1">Giriş</h2>
-          <p className="text-xs text-text3 mb-6">Hesabınla GES Takip&apos;e devam et</p>
+          <h2 className="font-display text-2xl font-extrabold mb-1 text-text">Giriş Yap</h2>
+          <p className="text-sm text-text2 mb-6">Hesabınla GES Takip&apos;e devam et</p>
 
           <form onSubmit={submit} className="space-y-4">
             <Field label="E-posta">
@@ -67,7 +65,7 @@ export default function LoginPage() {
                 <Input
                   type="email"
                   defaultValue="ozan.seyfi@kontrolmatik.com"
-                  className="pl-9 h-11"
+                  className="pl-9 !h-11"
                   placeholder="ornek@firma.com"
                 />
               </div>
@@ -75,26 +73,26 @@ export default function LoginPage() {
             <Field label="Şifre">
               <div className="relative">
                 <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text3" />
-                <Input type="password" defaultValue="demo" className="pl-9 h-11" placeholder="••••••••" />
+                <Input type="password" defaultValue="demo" className="pl-9 !h-11" placeholder="••••••••" />
               </div>
             </Field>
-            <div className="flex items-center justify-between text-xs pt-1">
+            <div className="flex items-center justify-between text-sm pt-1">
               <label className="flex items-center gap-2 text-text2 cursor-pointer">
                 <input type="checkbox" className="accent-accent w-4 h-4" />
                 Beni hatırla
               </label>
-              <Link href="/forgot-password" className="text-accent hover:underline">
+              <Link href="/forgot-password" className="text-accent hover:underline font-medium">
                 Şifremi unuttum
               </Link>
             </div>
-            <Button variant="accent" className="w-full !h-11" type="submit">
+            <Button variant="accent" size="lg" className="w-full" type="submit">
               Giriş Yap <ArrowRight size={14} />
             </Button>
           </form>
 
           <div className="my-6 flex items-center gap-3">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-[10px] text-text3 uppercase tracking-wider">veya</span>
+            <span className="text-[10px] text-text3 uppercase tracking-wider font-semibold">veya</span>
             <div className="flex-1 h-px bg-border" />
           </div>
 
@@ -102,25 +100,25 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-bg4 border border-border hover:bg-bg3 hover:border-border2 transition-all text-text2 hover:text-text text-sm font-medium"
+              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-white border border-border2 hover:bg-bg3 transition-all text-text font-semibold text-sm"
             >
               <GoogleIcon /> Google ile devam et
             </button>
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-bg4 border border-border hover:bg-bg3 hover:border-border2 transition-all text-text2 hover:text-text text-sm font-medium"
+              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-white border border-border2 hover:bg-bg3 transition-all text-text font-semibold text-sm"
             >
               <MicrosoftIcon /> Microsoft ile devam et
             </button>
           </div>
 
           <p className="text-xs text-text3 mt-6 text-center">
-            Hesabın yok mu? Yöneticinle iletişime geçerek davet linki iste.
+            Hesabın yok mu? Yöneticinden davet linki iste.
           </p>
         </div>
 
-        <p className="text-[10px] text-text3 text-center mt-4 tracking-wider uppercase">
+        <p className="text-[10px] text-text3 text-center mt-4 tracking-wider uppercase font-semibold">
           Lokal mod · herhangi bir e-posta/şifre ile giriş yapabilirsin
         </p>
       </div>
@@ -130,9 +128,9 @@ export default function LoginPage() {
 
 function Feature({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg3/60 border border-border2/60">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-border shadow-soft">
       <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-      <span className="text-xs text-text2">{label}</span>
+      <span className="text-xs text-text font-medium">{label}</span>
     </div>
   );
 }

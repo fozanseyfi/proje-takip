@@ -9,8 +9,8 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl bg-gradient-to-br from-bg3/90 to-bg2/90 border border-border2/80 p-5",
-        "border-t-blue/10 transition-colors hover:border-accent/20",
+        "rounded-xl bg-white border border-border p-5 shadow-soft transition-all",
+        "hover:border-border2 hover:shadow-medium",
         className
       )}
       {...props}
@@ -28,8 +28,7 @@ export function CardTitle({
   return (
     <div
       className={cn(
-        "font-display text-xs font-bold text-text2 uppercase tracking-[2px] mb-4 flex items-center gap-2",
-        "before:content-[''] before:block before:w-[2px] before:h-3.5 before:bg-gradient-to-b before:from-accent before:to-transparent before:rounded-sm",
+        "font-display text-xs font-bold text-text2 uppercase tracking-[1.5px] mb-4 flex items-center gap-2",
         className
       )}
       {...props}
@@ -66,7 +65,7 @@ export function CardContent({
   );
 }
 
-// KPI Card variant
+// KPI Card — premium light variant
 export function KpiCard({
   label,
   value,
@@ -75,6 +74,7 @@ export function KpiCard({
   barColor = "var(--accent)",
   className,
   valueClassName,
+  icon,
 }: {
   label: string;
   value: React.ReactNode;
@@ -83,29 +83,32 @@ export function KpiCard({
   barColor?: string;
   className?: string;
   valueClassName?: string;
+  icon?: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl p-5 transition-all",
-        "bg-gradient-to-br from-bg4/90 to-bg3/90 border border-border2/60",
-        "before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px",
-        "before:bg-gradient-to-r before:from-transparent before:via-blue/40 before:to-transparent",
-        "hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+        "relative overflow-hidden rounded-xl p-5 bg-white border border-border shadow-soft transition-all",
+        "hover:-translate-y-0.5 hover:shadow-medium hover:border-border2",
         className
       )}
     >
-      <div className="text-[10px] font-display uppercase tracking-[2px] text-text3 mb-2.5">
-        {label}
+      <div className="flex items-start justify-between mb-3">
+        <div className="text-[10px] font-display uppercase tracking-[1.5px] text-text3">
+          {label}
+        </div>
+        {icon && (
+          <span className="text-text3">{icon}</span>
+        )}
       </div>
-      <div className={cn("font-mono text-3xl font-bold leading-none", valueClassName)}>
+      <div className={cn("font-mono text-3xl font-bold leading-none text-text", valueClassName)}>
         {value}
       </div>
-      {sub && <div className="text-xs text-text3 mt-2">{sub}</div>}
+      {sub && <div className="text-xs text-text2 mt-2">{sub}</div>}
       {typeof barPct === "number" && (
-        <div className="h-0.5 bg-white/5 rounded-sm mt-3.5 overflow-hidden">
+        <div className="h-1 bg-bg3 rounded-full mt-4 overflow-hidden">
           <div
-            className="h-full rounded-sm transition-[width] duration-700 ease-out"
+            className="h-full rounded-full transition-[width] duration-700 ease-out"
             style={{ width: `${Math.min(100, Math.max(0, barPct))}%`, background: barColor }}
           />
         </div>

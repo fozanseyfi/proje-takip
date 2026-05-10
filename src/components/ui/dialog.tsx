@@ -43,12 +43,12 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px] overflow-y-auto animate-fade-in"
       onClick={onClose}
     >
       <div
         className={cn(
-          "w-full rounded-xl bg-bg2 border border-border2 shadow-2xl max-h-[92vh] flex flex-col my-8",
+          "w-full rounded-2xl bg-white border border-border shadow-large max-h-[92vh] flex flex-col my-8",
           sizes[size],
           className
         )}
@@ -56,7 +56,7 @@ export function Dialog({
       >
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <div className="font-display font-bold text-text uppercase tracking-wider text-sm">
+            <div className="font-display font-bold text-text tracking-tight text-base">
               {title}
             </div>
             <button

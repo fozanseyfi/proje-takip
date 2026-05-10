@@ -38,8 +38,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
     : "text-text3";
 
   return (
-    <header className="sticky top-0 z-30 h-15 px-3 sm:px-6 flex items-center gap-2 sm:gap-5 bg-gradient-to-r from-bg2/95 to-bg3/95 border-b border-accent/15 backdrop-blur-xl shadow-[0_1px_0_rgba(0,212,255,0.1),0_4px_30px_rgba(0,0,0,0.4)]">
-      {/* Mobile hamburger */}
+    <header className="sticky top-0 z-30 h-16 px-3 sm:px-6 flex items-center gap-2 sm:gap-5 bg-white/90 border-b border-border backdrop-blur-xl">
       {onMenuClick && (
         <button
           onClick={onMenuClick}
@@ -51,68 +50,79 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       )}
 
       <Link href="/dashboard" className="flex items-center gap-2 group">
-        <Logo size={26} textClassName="text-base sm:text-lg group-hover:tracking-[4px] transition-all duration-300" />
+        <Logo size={28} textClassName="text-base sm:text-lg" />
       </Link>
 
       {/* Project selector — desktop */}
-      <div className="relative hidden md:block border-l border-border pl-4">
+      <div className="relative hidden md:block border-l border-border pl-4 ml-1">
         <button
           onClick={() => setProjectMenuOpen((v) => !v)}
           onBlur={() => setTimeout(() => setProjectMenuOpen(false), 150)}
-          className="flex items-center gap-2 text-xs text-text2 hover:text-text transition-colors"
+          className="flex items-center gap-2 text-sm text-text2 hover:text-text transition-colors"
         >
+          <FolderKanban size={14} className="text-text3" />
           <span className="text-text3">Proje:</span>
-          <strong className="text-text font-medium">
-            {currentProject?.name ?? "—"}
-          </strong>
+          <strong className="text-text font-medium">{currentProject?.name ?? "—"}</strong>
           <ChevronDown size={14} className={cn("transition-transform", projectMenuOpen && "rotate-180")} />
         </button>
-        {projectMenuOpen && <ProjectDropdown projects={projects} currentId={currentProject?.id} onPick={(id) => { setCurrentProject(id); setProjectMenuOpen(false); }} />}
+        {projectMenuOpen && (
+          <div className="absolute top-9 left-0 z-40">
+            <ProjectDropdown
+              projects={projects}
+              currentId={currentProject?.id}
+              onPick={(id) => {
+                setCurrentProject(id);
+                setProjectMenuOpen(false);
+              }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Project selector — mobile (compact) */}
+      {/* Project selector — mobile */}
       <div className="md:hidden relative flex-1 min-w-0">
         <button
           onClick={() => setProjectMenuOpen((v) => !v)}
           onBlur={() => setTimeout(() => setProjectMenuOpen(false), 150)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-bg3 text-text2 max-w-full"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-bg3 text-text2 max-w-full"
         >
           <FolderKanban size={14} className="shrink-0 text-text3" />
-          <span className="text-xs font-medium truncate text-text">
-            {currentProject?.name ?? "Proje seç"}
-          </span>
+          <span className="text-xs font-medium truncate text-text">{currentProject?.name ?? "Proje seç"}</span>
           <ChevronDown size={12} className="shrink-0" />
         </button>
         {projectMenuOpen && (
-          <div className="absolute top-9 left-0 right-2">
-            <ProjectDropdown projects={projects} currentId={currentProject?.id} onPick={(id) => { setCurrentProject(id); setProjectMenuOpen(false); }} />
+          <div className="absolute top-10 left-0 right-2 z-40">
+            <ProjectDropdown
+              projects={projects}
+              currentId={currentProject?.id}
+              onPick={(id) => {
+                setCurrentProject(id);
+                setProjectMenuOpen(false);
+              }}
+            />
           </div>
         )}
       </div>
 
       {/* Stats — desktop only */}
       {currentProject && stats && (
-        <div className="ml-auto hidden lg:flex items-center gap-6">
+        <div className="ml-auto hidden lg:flex items-center gap-5">
           <Stat label="Rapor Günü" value={formatDate(currentProject.reportDate)} />
-          <Stat label="Plan %" value={`${(stats.planPct * 100).toFixed(1)}%`} valueClass="text-planned" />
-          <Stat label="Real %" value={`${(stats.realPct * 100).toFixed(1)}%`} valueClass="text-realized" />
-          <Stat
-            label="SPI"
-            value={stats.spi == null ? "—" : stats.spi.toFixed(3)}
-            valueClass={spiClass}
-          />
+          <Divider />
+          <Stat label="Plan" value={`${(stats.planPct * 100).toFixed(1)}%`} valueClass="text-planned" />
+          <Stat label="Gerçek" value={`${(stats.realPct * 100).toFixed(1)}%`} valueClass="text-realized" />
+          <Stat label="SPI" value={stats.spi == null ? "—" : stats.spi.toFixed(3)} valueClass={spiClass} />
         </div>
       )}
 
       {/* Mobile SPI badge */}
       {currentProject && stats?.spi != null && (
-        <div className="lg:hidden font-mono text-xs px-2 py-1 rounded-md bg-bg3 border border-border">
+        <div className="lg:hidden font-mono text-xs px-2.5 py-1 rounded-md bg-bg3 border border-border">
           <span className="text-text3">SPI </span>
           <span className={spiClass}>{stats.spi.toFixed(2)}</span>
         </div>
       )}
 
-      {/* Right side */}
       <div className={cn("flex items-center gap-1 sm:gap-2", !currentProject && "ml-auto")}>
         <button className="relative p-2 rounded-md hover:bg-bg3 text-text2 hover:text-text transition-colors">
           <Bell size={16} />
@@ -128,20 +138,20 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             onBlur={() => setTimeout(() => setUserMenuOpen(false), 150)}
             className="flex items-center gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-bg3 transition-colors"
           >
-            <div className="w-7 h-7 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
+            <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
               <UserIcon size={14} />
             </div>
             <div className="hidden sm:block text-left">
-              <div className="text-xs font-medium text-text">{currentUser?.fullName ?? "—"}</div>
+              <div className="text-xs font-semibold text-text">{currentUser?.fullName ?? "—"}</div>
               <div className="text-[10px] text-text3">{currentUser?.isSuperAdmin ? "Süper Admin" : "Kullanıcı"}</div>
             </div>
           </button>
           {userMenuOpen && (
-            <div className="absolute top-12 right-0 min-w-[200px] py-1 rounded-lg bg-bg2 border border-border2 shadow-2xl">
-              <Link href="/account" className="block px-3 py-2 text-xs text-text2 hover:bg-bg3">
+            <div className="absolute top-12 right-0 min-w-[200px] py-1 rounded-lg bg-white border border-border shadow-medium z-40">
+              <Link href="/account" className="block px-3 py-2 text-sm text-text2 hover:bg-bg3 hover:text-text">
                 Profilim
               </Link>
-              <Link href="/login" className="flex items-center gap-2 px-3 py-2 text-xs text-text2 hover:bg-bg3">
+              <Link href="/login" className="flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg3 hover:text-text">
                 <LogOut size={14} /> Çıkış
               </Link>
             </div>
@@ -152,21 +162,17 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string;
-  value: React.ReactNode;
-  valueClass?: string;
-}) {
+function Stat({ label, value, valueClass }: { label: string; value: React.ReactNode; valueClass?: string }) {
   return (
     <div className="text-right">
-      <div className="text-[9px] uppercase tracking-[2px] font-display text-text3">{label}</div>
+      <div className="text-[9px] uppercase tracking-[1.5px] font-display text-text3 mb-0.5">{label}</div>
       <div className={cn("font-mono text-sm font-semibold", valueClass)}>{value}</div>
     </div>
   );
+}
+
+function Divider() {
+  return <span className="h-6 w-px bg-border" />;
 }
 
 function ProjectDropdown({
@@ -179,23 +185,23 @@ function ProjectDropdown({
   onPick: (id: string) => void;
 }) {
   return (
-    <div className="min-w-[260px] py-1 rounded-lg bg-bg2 border border-border2 shadow-2xl">
+    <div className="min-w-[280px] py-1 rounded-lg bg-white border border-border shadow-medium">
       {projects.map((p) => (
         <button
           key={p.id}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(p.id)}
           className={cn(
-            "block w-full text-left px-3 py-2 text-xs hover:bg-bg3 transition-colors",
-            p.id === currentId ? "text-accent" : "text-text2"
+            "block w-full text-left px-3 py-2 text-sm hover:bg-bg3 transition-colors",
+            p.id === currentId ? "text-accent bg-accent/5" : "text-text2"
           )}
         >
           <div className="font-medium">{p.name}</div>
-          <div className="text-[10px] text-text3">{p.location}</div>
+          <div className="text-[11px] text-text3">{p.location}</div>
         </button>
       ))}
       <div className="border-t border-border my-1" />
-      <Link href="/projects" className="block px-3 py-2 text-xs text-accent hover:bg-bg3">
+      <Link href="/projects" className="block px-3 py-2 text-sm text-accent hover:bg-bg3">
         + Tüm projeler / yeni proje
       </Link>
     </div>

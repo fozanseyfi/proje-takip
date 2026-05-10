@@ -14,7 +14,7 @@ export function Progress({
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
-    <div className={cn("h-1.5 bg-bg4 rounded-full overflow-hidden", className)}>
+    <div className={cn("h-1.5 bg-bg3 rounded-full overflow-hidden", className)}>
       <div
         className="h-full rounded-full transition-[width] duration-500"
         style={{ width: `${pct}%`, background: color }}
@@ -37,9 +37,9 @@ export function ProgressDouble({
   const planPct = Math.min(100, Math.max(0, (plan / max) * 100));
   const realPct = Math.min(100, Math.max(0, (real / max) * 100));
   return (
-    <div className={cn("relative h-2 bg-bg4 rounded-full overflow-hidden", className)}>
+    <div className={cn("relative h-2 bg-bg3 rounded-full overflow-hidden", className)}>
       <div
-        className="absolute top-0 left-0 h-full rounded-full bg-planned/50 transition-[width] duration-500"
+        className="absolute top-0 left-0 h-full rounded-full bg-planned/40 transition-[width] duration-500"
         style={{ width: `${planPct}%` }}
       />
       <div
