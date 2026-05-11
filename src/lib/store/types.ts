@@ -214,9 +214,18 @@ export interface ProcurementItem {
   notes?: string;
 }
 
+/**
+ * Fatura — iki yönlü:
+ * - `owner_incoming`: işverene biz hakediş kestik (gelir)
+ * - `subcontractor_outgoing`: alt yükleniciden bize fatura geldi (gider)
+ */
+export type BillingDirection = "owner_incoming" | "subcontractor_outgoing";
+
 export interface BillingItem {
   id: string;
   projectId: string;
+  direction: BillingDirection;
+  subcontractorId?: string;          // sadece subcontractor_outgoing için
   invoiceNo?: string;
   description: string;
   amount: number;
@@ -226,6 +235,30 @@ export interface BillingItem {
   paidDate?: string;
   status: "taslak" | "gonderildi" | "odendi" | "iptal";
   notes?: string;
+}
+
+/**
+ * Alt yüklenici (subcontractor) — proje bazlı sözleşme.
+ */
+export interface Subcontractor {
+  id: string;
+  projectId: string;
+  name: string;                  // firma adı
+  taxNo?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  scopeOfWork: string;           // iş kapsamı kısa açıklama
+  discipline?: Discipline;
+  contractAmount: number;        // sözleşme tutarı
+  currency: Currency;
+  contractDate: string;          // sözleşme tarihi
+  startDate?: string;
+  endDate?: string;              // planlanan bitiş
+  status: "aktif" | "tamamlandi" | "iptal" | "askida";
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BudgetCategory {

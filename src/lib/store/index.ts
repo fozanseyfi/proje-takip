@@ -24,6 +24,7 @@ import type {
   AuditEntry,
   NotificationItem,
   Role,
+  Subcontractor,
 } from "./types";
 import { DEFAULT_WBS } from "@/lib/data/default-wbs";
 import { uid, toISODate } from "@/lib/utils";
@@ -61,6 +62,7 @@ export interface StoreState {
   dailyReports: DailyReport[];
   procurement: ProcurementItem[];
   billing: BillingItem[];
+  subcontractors: Subcontractor[];
   budgetCategories: BudgetCategory[];
   budgetActuals: BudgetActual[];
   lookahead: LookaheadItem[];
@@ -133,6 +135,11 @@ export interface StoreState {
   addBilling: (b: Omit<BillingItem, "id">) => void;
   updateBilling: (id: string, patch: Partial<BillingItem>) => void;
   deleteBilling: (id: string) => void;
+
+  // Subcontractors
+  addSubcontractor: (s: Omit<Subcontractor, "id" | "createdAt" | "updatedAt">) => Subcontractor;
+  updateSubcontractor: (id: string, patch: Partial<Subcontractor>) => void;
+  deleteSubcontractor: (id: string) => void;
 
   // Budget
   addBudgetCategory: (c: Omit<BudgetCategory, "id">) => void;
@@ -246,6 +253,7 @@ const initialState: Omit<StoreState, keyof Actions> = {
   dailyReports: [],
   procurement: [],
   billing: [],
+  subcontractors: [],
   budgetCategories: [],
   budgetActuals: [],
   lookahead: [],
@@ -597,6 +605,29 @@ export const useStore = create<StoreState>()(
         })),
       deleteBilling: (id) =>
         set((s) => ({ billing: s.billing.filter((b) => b.id !== id) })),
+
+      addSubcontractor: (sc) => {
+        const item: Subcontractor = {
+          id: uid(),
+          createdAt: now(),
+          updatedAt: now(),
+          ...sc,
+        };
+        set((s) => ({ subcontractors: [...s.subcontractors, item] }));
+        return item;
+      },
+      updateSubcontractor: (id, patch) =>
+        set((s) => ({
+          subcontractors: s.subcontractors.map((x) =>
+            x.id === id ? { ...x, ...patch, updatedAt: now() } : x
+          ),
+        })),
+      deleteSubcontractor: (id) =>
+        set((s) => ({
+          subcontractors: s.subcontractors.filter((x) => x.id !== id),
+          // İlgili alt yüklenici faturalarını sil
+          billing: s.billing.filter((b) => b.subcontractorId !== id),
+        })),
 
       addBudgetCategory: (c) =>
         set((s) => ({ budgetCategories: [...s.budgetCategories, { id: uid(), ...c }] })),
