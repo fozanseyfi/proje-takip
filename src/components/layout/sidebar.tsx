@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { navGroups } from "./nav-config";
 import { useCurrentUser, useCurrentProject } from "@/lib/store";
 import { Logo, LogoMark } from "@/components/brand/logo";
@@ -109,29 +109,32 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "hidden md:flex flex-col shrink-0 border-r border-border bg-white sticky top-0 h-screen transition-[width] duration-200 ease-out relative",
+        "hidden md:flex flex-col shrink-0 border-r border-border bg-white sticky top-0 h-fit max-h-screen overflow-y-auto overflow-x-hidden transition-[width] duration-200 ease-out",
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <BrandBlock collapsed={collapsed} />
-        <NavList collapsed={collapsed} />
-      </div>
-
-      {/* Toggle butonu — sidebar'ın sağ kenarında ortalı */}
+      {/* Toggle bar — sidebar'ın üstünde */}
       {onToggleCollapsed && (
-        <button
-          onClick={onToggleCollapsed}
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 -right-3 z-10",
-            "w-6 h-6 rounded-full bg-white border border-border shadow-soft",
-            "flex items-center justify-center text-text3 hover:text-accent hover:border-accent transition-all"
-          )}
-          title={collapsed ? "Aç" : "Daralt"}
-        >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
+        <div className={cn("flex border-b border-border bg-bg2/30", collapsed ? "px-2 py-2 justify-center" : "px-3 py-2 justify-end")}>
+          <button
+            onClick={onToggleCollapsed}
+            className={cn(
+              "inline-flex items-center gap-1.5 h-7 rounded-md transition-all",
+              "text-text3 hover:text-accent hover:bg-white",
+              collapsed ? "w-8 justify-center" : "px-2"
+            )}
+            title={collapsed ? "Sidebar'ı aç" : "Sidebar'ı daralt"}
+          >
+            {!collapsed && (
+              <span className="text-[10px] font-bold uppercase tracking-wider">Daralt</span>
+            )}
+            {collapsed ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+          </button>
+        </div>
       )}
+
+      <BrandBlock collapsed={collapsed} />
+      <NavList collapsed={collapsed} />
     </aside>
   );
 }

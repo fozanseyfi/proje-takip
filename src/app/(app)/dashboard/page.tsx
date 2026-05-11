@@ -442,43 +442,58 @@ export default function DashboardPage() {
               İmalat Bölüm Özeti
             </CardTitle>
           </div>
-          <div className="max-h-[220px] overflow-y-auto">
-            <table className="w-full text-xs">
-              <tbody>
-                {stats.sections.map((sec) => {
-                  const spiL = spiLevel(sec.spi);
-                  return (
-                    <tr key={sec.code} className="border-b border-border last:border-b-0 hover:bg-bg2/40">
-                      <td className="px-3 py-2 align-middle">
-                        <div className="font-mono text-[10px] text-text3 leading-tight">{sec.code}</div>
-                        <div className="text-xs font-semibold truncate max-w-[10rem] leading-tight">{sec.name}</div>
-                      </td>
-                      <td className="px-2 py-2 align-middle">
-                        <div className="relative h-1.5 bg-bg3 rounded-full overflow-hidden">
-                          <div className="absolute h-full bg-planned/40 rounded-full" style={{ width: `${sec.planPct * 100}%` }} />
-                          <div className="absolute h-full bg-realized rounded-full" style={{ width: `${sec.realPct * 100}%` }} />
-                        </div>
-                        <div className="flex justify-between text-[9px] mt-0.5 font-mono tabular-nums">
-                          <span className="text-planned">{(sec.planPct * 100).toFixed(0)}%</span>
-                          <span className="text-realized">{(sec.realPct * 100).toFixed(0)}%</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 text-right align-middle">
-                        {sec.spi == null ? (
-                          <span className="text-text3 text-[10px]">—</span>
-                        ) : (
-                          <span className={cn("font-mono text-[10px] font-bold",
-                            spiL === "good" ? "text-green" : spiL === "warn" ? "text-yellow" : "text-red"
-                          )}>
-                            {sec.spi.toFixed(2)}
-                          </span>
+          <div className="p-4 space-y-3">
+            {stats.sections.map((sec) => {
+              const spiL = spiLevel(sec.spi);
+              const planP = sec.planPct * 100;
+              const realP = sec.realPct * 100;
+              return (
+                <div key={sec.code} className="rounded-lg border border-border bg-white p-3 hover:bg-bg2/40 transition-colors">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-mono text-[10px] text-text3 font-bold">{sec.code}</span>
+                        {sec.spi != null && (
+                          <Badge variant={spiL === "good" ? "green" : spiL === "warn" ? "yellow" : "red"}>
+                            SPI {sec.spi.toFixed(2)}
+                          </Badge>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      <div className="text-sm font-semibold text-text leading-tight">{sec.name}</div>
+                    </div>
+                  </div>
+                  {/* Plan / Gerçek metrikleri */}
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div className="rounded-md bg-blue/5 border border-blue/15 px-2 py-1.5">
+                      <div className="text-[9px] uppercase tracking-wider font-bold text-text3 leading-tight">Plan</div>
+                      <div className="font-mono font-bold text-planned text-sm leading-tight tabular-nums">
+                        {planP.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-green/5 border border-green/15 px-2 py-1.5">
+                      <div className="text-[9px] uppercase tracking-wider font-bold text-text3 leading-tight">Gerçek</div>
+                      <div className="font-mono font-bold text-realized text-sm leading-tight tabular-nums">
+                        {realP.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                  {/* Çift katmanlı bar */}
+                  <div className="relative h-2 bg-bg3 rounded-full overflow-hidden">
+                    <div
+                      className="absolute h-full bg-planned/40 rounded-full transition-[width] duration-500"
+                      style={{ width: `${planP}%` }}
+                    />
+                    <div
+                      className="absolute h-full bg-realized rounded-full transition-[width] duration-500"
+                      style={{ width: `${realP}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {stats.sections.length === 0 && (
+              <div className="text-center text-text3 text-sm py-6">Bölüm verisi yok.</div>
+            )}
           </div>
         </Card>
       </div>
