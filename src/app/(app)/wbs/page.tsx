@@ -8,19 +8,14 @@ import {
   Trash2,
   ChevronRight,
   ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Scale,
-  RotateCcw,
-  Sparkles,
-  CheckCircle2,
   AlertTriangle,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
-import {
-  useStore,
-  useCurrentProject,
-  useProjectWbs,
-  useProjectPlanned,
-  useProjectRealized,
-} from "@/lib/store";
+import { useStore, useCurrentProject, useProjectWbs } from "@/lib/store";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,60 +23,69 @@ import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
-import { useToast } from "@/components/ui/toast";
-import { cn, formatNumber, formatPct } from "@/lib/utils";
-import { computeEffectiveWeights, sumByDateMap } from "@/lib/calc/progress";
+import { cn, formatNumber } from "@/lib/utils";
+import {
+  computeHierarchicalWeights,
+  getParentWeightSummaries,
+} from "@/lib/calc/sections";
 import type { WbsItem } from "@/lib/store/types";
+
+// Level renkleri (bar + nihai ağırlık)
+const LEVEL_COLOR: Record<number, { bar: string; barBg: string; text: string }> = {
+  0: { bar: "bg-slate-500", barBg: "bg-slate-200", text: "text-slate-700" },
+  1: { bar: "bg-blue",      barBg: "bg-blue/20",  text: "text-blue" },
+  2: { bar: "bg-purple",    barBg: "bg-purple/20", text: "text-purple" },
+  3: { bar: "bg-accent",    barBg: "bg-accent/20", text: "text-accent" },
+};
+
+const LEVEL_LABEL: Record<number, string> = {
+  0: "Proje",
+  1: "Ana Başlık",
+  2: "Alt Başlık",
+  3: "İş Kalemi",
+};
 
 export default function WbsPage() {
   const project = useCurrentProject();
   const allWbs = useProjectWbs(project?.id);
-  const planned = useProjectPlanned(project?.id);
-  const realized = useProjectRealized(project?.id);
   const addWbs = useStore((s) => s.addWbs);
   const updateWbs = useStore((s) => s.updateWbs);
   const softDeleteWbs = useStore((s) => s.softDeleteWbs);
-  const toast = useToast((s) => s.push);
 
   const [editing, setEditing] = useState<WbsItem | null>(null);
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [allExpanded, setAllExpanded] = useState<boolean>(false);
   const [filterDiscipline, setFilterDiscipline] = useState<string>("");
 
-  // Sıralı liste
   const sorted = useMemo(
     () => [...allWbs].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
     [allWbs]
   );
 
-  // Leaf'lerin effective weight haritası
-  const effectiveMap = useMemo(() => {
-    const leaves = allWbs.filter((w) => w.isLeaf);
-    const weighted = computeEffectiveWeights(
-      leaves.map((l) => ({ code: l.code, isLeaf: l.isLeaf, quantity: l.quantity, weight: l.weight }))
-    );
-    const m: Record<string, number> = {};
-    for (const w of weighted) m[w.code] = w.effectiveWeight;
-    return m;
-  }, [allWbs]);
+  // Hiyerarşik ağırlıklar
+  const hierarchicalMap = useMemo(() => computeHierarchicalWeights(allWbs), [allWbs]);
+  const parentSummaries = useMemo(() => getParentWeightSummaries(allWbs), [allWbs]);
 
-  // Toplam custom weight (leaves)
-  const customWeightTotal = useMemo(
-    () => allWbs.filter((w) => w.isLeaf).reduce((s, w) => s + (w.weight || 0), 0),
-    [allWbs]
+  // Doğrulama: kaç parent'ta yerel ağırlık toplamı ≠ %100?
+  const unbalanced = parentSummaries.filter(
+    (p) => !p.isAutoMode && !p.isBalanced
   );
-  const isAutoWeight = customWeightTotal === 0;
-  const isCustomBalanced = !isAutoWeight && Math.abs(customWeightTotal - 1) < 0.001;
+  const autoCount = parentSummaries.filter((p) => p.isAutoMode).length;
+  const balancedCount = parentSummaries.filter((p) => p.isBalanced).length;
 
-  // Görünür satırlar (filtre + expand)
+  // Görünür satırlar
   function isVisible(code: string): boolean {
     const parts = code.split(".");
     for (let i = 1; i < parts.length; i++) {
       const ancestor = parts.slice(0, i).join(".");
+      // hiyerarşi atlama olabilir, sadece var olan ataları kontrol et
+      const ancestorExists = allWbs.some((w) => w.code === ancestor);
+      if (!ancestorExists) continue;
       const exp = expanded[ancestor];
       if (exp === false) return false;
-      // Default L0/L1 açık, L2+ kapalı
-      if (exp === undefined && i >= 2) return false;
+      // Default: L0 (code "1") açık, gerisi kapalı
+      if (exp === undefined && ancestor.includes(".")) return false;
     }
     return true;
   }
@@ -90,65 +94,31 @@ export default function WbsPage() {
     (w) => isVisible(w.code) && (!filterDiscipline || w.discipline === filterDiscipline)
   );
 
-  // Parent için descendant leaf'leri bul
-  function descendantLeaves(parentCode: string): WbsItem[] {
-    return allWbs.filter(
-      (w) => w.isLeaf && w.code !== parentCode && w.code.startsWith(parentCode + ".")
-    );
-  }
-
   function toggleExpand(code: string) {
     setExpanded((s) => {
       const current = s[code];
-      const defaultExpanded = code.split(".").length <= 2; // L0/L1 default açık
-      const isOpen = current === undefined ? defaultExpanded : current;
+      const isOpen = current === undefined ? code.split(".").length <= 1 : current;
       return { ...s, [code]: !isOpen };
     });
   }
 
-  // Genel ilerleme
-  const items = allWbs.map((w) => ({
-    code: w.code,
-    isLeaf: w.isLeaf,
-    quantity: w.quantity,
-    weight: w.weight,
-  }));
-  const reportDate = project?.reportDate ?? "";
-  const { planPct, realPct } = useMemo(() => {
-    let planPct = 0;
-    let realPct = 0;
-    const weighted = computeEffectiveWeights(items);
-    for (const w of weighted) {
-      if (w.quantity <= 0) continue;
-      const p = sumByDateMap(planned, w.code, reportDate);
-      const r = sumByDateMap(realized, w.code, reportDate);
-      planPct += w.effectiveWeight * Math.min(p / w.quantity, 1);
-      realPct += w.effectiveWeight * Math.min(r / w.quantity, 1);
-    }
-    return { planPct, realPct };
-  }, [items, planned, realized, reportDate]);
-
-  // Aksiyonlar
-  function resetWeights() {
-    if (!confirm("Tüm özel ağırlıklar sıfırlanacak (otomatik eşit dağıtım moduna geçilir). Onaylıyor musun?")) return;
-    for (const w of allWbs) {
-      if (w.isLeaf && w.weight !== 0) updateWbs(w.id, { weight: 0 });
-    }
-    toast("Tüm özel ağırlıklar sıfırlandı · otomatik eşit dağıtım aktif", "info");
-  }
-
-  function normalizeWeights() {
-    if (customWeightTotal === 0) {
-      toast("Önce bazı kalemlere özel ağırlık girmelisin", "warning");
-      return;
-    }
-    if (!confirm(`Mevcut özel ağırlıklar (Σ = ${customWeightTotal.toFixed(3)}) 1.000'e normalize edilecek. Onaylıyor musun?`)) return;
-    for (const w of allWbs) {
-      if (w.isLeaf && w.weight > 0) {
-        updateWbs(w.id, { weight: w.weight / customWeightTotal });
+  function toggleAll() {
+    if (allExpanded) {
+      // Tümünü kapa: sadece kök (L0) açık
+      const m: Record<string, boolean> = {};
+      for (const w of allWbs) {
+        if (w.code.includes(".")) m[w.code] = false;
+        else m[w.code] = true;
       }
+      setExpanded(m);
+      setAllExpanded(false);
+    } else {
+      // Tümünü aç
+      const m: Record<string, boolean> = {};
+      for (const w of allWbs) m[w.code] = true;
+      setExpanded(m);
+      setAllExpanded(true);
     }
-    toast("Özel ağırlıklar 1.000 toplamına normalize edildi", "success");
   }
 
   function updateLeafWeight(id: string, raw: string) {
@@ -165,69 +135,103 @@ export default function WbsPage() {
     );
   }
 
-  const totalLeaves = allWbs.filter((w) => w.isLeaf).length;
-  const customCount = allWbs.filter((w) => w.isLeaf && w.weight > 0).length;
+  const totalNodes = allWbs.length;
+  const leafCount = allWbs.filter((w) => w.isLeaf).length;
+  const l1Count = allWbs.filter((w) => w.level === 1).length;
+  const l2Count = allWbs.filter((w) => w.level === 2).length;
 
   return (
     <>
       <PageHeader
-        title="WBS Yapısı & Ağırlık Yönetimi"
-        description={`${allWbs.length} madde · ${totalLeaves} yaprak kalem · İlerleme hesabı bu ağırlıklara göre yapılır`}
+        title="WBS Yapısı & Hiyerarşik Ağırlık"
+        description={`${totalNodes} madde · ${l1Count} ana başlık · ${l2Count} alt başlık · ${leafCount} iş kalemi`}
         icon={FolderTree}
         actions={
-          <Button variant="accent" onClick={() => setCreating(true)}>
-            <Plus size={14} /> Yeni WBS
-          </Button>
+          <>
+            <Button variant="outline" onClick={toggleAll}>
+              {allExpanded ? (
+                <>
+                  <ChevronsDownUp size={14} /> Tümünü Kapa
+                </>
+              ) : (
+                <>
+                  <ChevronsUpDown size={14} /> Tümünü Aç
+                </>
+              )}
+            </Button>
+            <Button variant="accent" onClick={() => setCreating(true)}>
+              <Plus size={14} /> Yeni WBS
+            </Button>
+          </>
         }
       />
 
-      {/* Üst stat barı */}
+      {/* Üst stat */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <StatBlock
-          label="Toplam Yaprak"
-          value={`${totalLeaves}`}
-          sub="hesaplamaya konu kalem"
+          color="slate"
+          label="Toplam Madde"
+          value={`${totalNodes}`}
+          sub={`${l1Count} ana · ${l2Count} alt · ${leafCount} iş`}
           icon={<FolderTree size={16} />}
         />
         <StatBlock
-          label="Özel Ağırlıklı"
-          value={`${customCount}`}
-          sub={`/ ${totalLeaves} kalem`}
+          color="blue"
+          label="Otomatik Mod"
+          value={`${autoCount}`}
+          sub="seviyede eşit dağıtım (kullanıcı girmemiş)"
           icon={<Sparkles size={16} />}
-          color={customCount > 0 ? "accent" : "muted"}
         />
         <StatBlock
-          label="Toplam Özel Ağırlık"
-          value={isAutoWeight ? "—" : formatNumber(customWeightTotal, 3)}
-          sub={
-            isAutoWeight ? (
-              <span>Otomatik eşit dağıtım <strong className="text-text">1/{totalLeaves}</strong></span>
-            ) : isCustomBalanced ? (
-              <span className="text-green">✓ Doğru (Σ = 1.000)</span>
+          color="green"
+          label="Doğru Ağırlıklı"
+          value={`${balancedCount}`}
+          sub="seviyede Σ ≈ 100 ✓"
+          icon={<CheckCircle2 size={16} />}
+        />
+        <StatBlock
+          color={unbalanced.length === 0 ? "green" : "yellow"}
+          label="Dengesiz"
+          value={`${unbalanced.length}`}
+          sub={unbalanced.length === 0 ? "tüm seviyeler tutarlı" : "seviyede Σ ≠ 100"}
+          icon={
+            unbalanced.length === 0 ? (
+              <CheckCircle2 size={16} />
             ) : (
-              <span className="text-yellow">⚠ {customWeightTotal > 1 ? "Fazla" : "Eksik"} · Normalize Et</span>
+              <AlertTriangle size={16} />
             )
           }
-          icon={<Scale size={16} />}
-          color={isAutoWeight ? "muted" : isCustomBalanced ? "green" : "yellow"}
-        />
-        <StatBlock
-          label="Genel İlerleme"
-          value={formatPct(realPct, 1)}
-          sub={
-            <span>
-              Plan: <strong className="text-planned">{formatPct(planPct, 1)}</strong>
-            </span>
-          }
-          icon={<CheckCircle2 size={16} />}
-          color="realized"
         />
       </div>
+
+      {/* Bilgi mesajı */}
+      <Alert variant="info" className="mb-4">
+        <strong>Nasıl çalışır:</strong> Proje ağırlığı her zaman %100&apos;dür. Ana başlıkların kendi
+        aralarındaki toplamı %100. Bir ana başlığın alt başlıkları da kendi içlerinde %100. İş
+        kalemleri ise alt başlığın içinde %100. <strong>Nihai ağırlık</strong> = ana × alt × kalem (kümülatif çarpım).
+        Bir seviye için yerel ağırlık girmezsen <em>otomatik eşit dağıtım</em> uygulanır.
+      </Alert>
+
+      {unbalanced.length > 0 && (
+        <Alert variant="warning" className="mb-4">
+          <strong>{unbalanced.length} seviyede</strong> kardeş ağırlık toplamı %100 değil — sistem
+          orantılı normalize ediyor ama netlik için 100&apos;e tamamla. Etkilenen başlıklar:{" "}
+          <span className="font-mono text-xs">
+            {unbalanced.slice(0, 5).map((u) => u.parentName).join(", ")}
+            {unbalanced.length > 5 ? "…" : ""}
+          </span>
+        </Alert>
+      )}
 
       {/* Aksiyon barı */}
       <Card className="!p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 text-xs">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-text3">Renk Açıklaması:</span>
+          <LegendDot color="bg-slate-500" label="Proje" />
+          <LegendDot color="bg-blue" label="Ana Başlık (L1)" />
+          <LegendDot color="bg-purple" label="Alt Başlık (L2)" />
+          <LegendDot color="bg-accent" label="İş Kalemi (L3)" />
+          <div className="ml-auto flex items-center gap-2 text-xs">
             <span className="text-text3 font-bold uppercase tracking-wider">Disiplin:</span>
             <Select
               value={filterDiscipline}
@@ -243,24 +247,8 @@ export default function WbsPage() {
               <option value="diger">Diğer</option>
             </Select>
           </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={resetWeights} disabled={customCount === 0}>
-              <RotateCcw size={14} /> Özel Ağırlıkları Sıfırla
-            </Button>
-            <Button variant="soft" onClick={normalizeWeights} disabled={isAutoWeight || isCustomBalanced}>
-              <Scale size={14} /> Normalize Et (Σ→1.000)
-            </Button>
-          </div>
         </div>
       </Card>
-
-      {!isAutoWeight && !isCustomBalanced && (
-        <Alert variant="warning" className="mb-4">
-          Özel ağırlıkların toplamı <strong>{customWeightTotal.toFixed(3)}</strong> — 1.000 olması beklenir.
-          İlerleme hesabı bu değerleri kendi içinde normalize ederek yapar, ama netlik için yukarıdaki{" "}
-          <strong>Normalize Et</strong> butonunu kullanabilirsin.
-        </Alert>
-      )}
 
       {/* Ana tablo */}
       <Card className="!p-0 overflow-hidden">
@@ -268,11 +256,11 @@ export default function WbsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[18rem]">
+                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[22rem]">
                   Kod / Ad
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap">
-                  Disiplin
+                  Seviye
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap">
                   Miktar
@@ -281,149 +269,126 @@ export default function WbsPage() {
                   Birim
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-center text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[7rem]">
-                  Özel Ağırlık
+                  Yerel Ağırlık (%)
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap">
-                  Nihai Ağırlık
+                  Nihai Ağırlık (%)
                 </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[10rem]">
+                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[12rem]">
                   Dağılım
-                </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap">
-                  Plan / Real
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 border-b border-border w-16"></th>
               </tr>
             </thead>
             <tbody>
               {visible.map((w) => {
-                const hasChildren = allWbs.some(
-                  (c) => c.code !== w.code && c.code.startsWith(w.code + ".")
-                );
+                const hier = hierarchicalMap.get(w.code);
+                const localPct = hier ? hier.localPct * 100 : 0;
+                const finalPct = hier ? hier.finalPct * 100 : 0;
+                const hasChildren = (hier?.childCount ?? 0) > 0;
                 const isExpanded =
                   expanded[w.code] !== undefined
                     ? expanded[w.code]
-                    : w.level <= 1;
+                    : !w.code.includes("."); // sadece L0 default açık
 
-                const pSum = w.isLeaf ? sumByDateMap(planned, w.code, project.reportDate) : 0;
-                const rSum = w.isLeaf ? sumByDateMap(realized, w.code, project.reportDate) : 0;
-
-                // Effective weight
-                let effective = 0;
-                let customSum = 0;
-                if (w.isLeaf) {
-                  effective = effectiveMap[w.code] ?? 0;
-                  customSum = w.weight || 0;
-                } else {
-                  // Parent: descendant leaves'in toplamı
-                  const descendants = descendantLeaves(w.code);
-                  for (const d of descendants) {
-                    effective += effectiveMap[d.code] ?? 0;
-                    customSum += d.weight || 0;
-                  }
-                }
-
-                const effectivePct = effective * 100;
+                // Dağılım barı için min görsel
+                const barWidth = w.level === 0 ? 100 : Math.max(0.5, finalPct);
+                const c = LEVEL_COLOR[w.level] || LEVEL_COLOR[3];
 
                 return (
-                  <tr key={w.id} className={cn("hover:bg-bg2/40 transition-colors", w.level === 0 && "bg-accent/5")}>
+                  <tr key={w.id} className={cn("hover:bg-bg2/40 transition-colors", w.level === 0 && "bg-bg2/40")}>
                     {/* Kod / Ad */}
                     <td className={cn(
                       "px-3 py-2.5 border-b border-border",
-                      w.level === 0 && "font-bold text-accent",
+                      w.level === 0 && "font-bold text-slate-700",
                       w.level === 1 && "font-semibold text-blue",
-                      w.level === 2 && "font-medium text-text",
-                      w.level === 3 && "text-text2"
+                      w.level === 2 && "font-semibold text-purple",
+                      w.level === 3 && "text-text"
                     )}>
-                      <div className="flex items-center gap-1.5" style={{ paddingLeft: `${(w.level) * 14}px` }}>
+                      <div className="flex items-center gap-1.5" style={{ paddingLeft: `${w.level * 16}px` }}>
                         {hasChildren ? (
                           <button
                             onClick={() => toggleExpand(w.code)}
-                            className="text-text3 hover:text-text shrink-0"
+                            className="text-text3 hover:text-text shrink-0 w-4 h-4 flex items-center justify-center"
                           >
-                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                           </button>
                         ) : (
-                          <span className="w-3 shrink-0" />
+                          <span className="w-4 shrink-0" />
                         )}
                         <span className="font-mono text-xs shrink-0">{w.code}</span>
                         <span className="truncate">{w.name}</span>
+                        {w.discipline && (
+                          <Badge variant="gray" className="ml-1.5 shrink-0">
+                            {w.discipline}
+                          </Badge>
+                        )}
                       </div>
                     </td>
-                    {/* Disiplin */}
+
+                    {/* Seviye */}
                     <td className="px-3 py-2.5 border-b border-border">
-                      {w.discipline && <Badge variant="gray">{w.discipline}</Badge>}
+                      <span className={cn("text-[10px] font-bold uppercase tracking-wider", c.text)}>
+                        {LEVEL_LABEL[w.level]}
+                      </span>
                     </td>
+
                     {/* Miktar */}
                     <td className="px-3 py-2.5 border-b border-border text-right font-mono text-xs tabular-nums">
                       {w.isLeaf && w.quantity > 0 ? formatNumber(w.quantity, 0) : ""}
                     </td>
+
                     {/* Birim */}
                     <td className="px-3 py-2.5 border-b border-border text-xs text-text3">{w.unit}</td>
 
-                    {/* Özel Ağırlık */}
+                    {/* Yerel Ağırlık (%) */}
                     <td className="px-2 py-1.5 border-b border-border text-center">
-                      {w.isLeaf ? (
-                        <input
-                          type="number"
-                          step="0.001"
-                          min="0"
-                          value={w.weight || ""}
-                          onChange={(e) => updateLeafWeight(w.id, e.target.value)}
-                          placeholder="0"
-                          className={cn(
-                            "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
-                            "focus:outline-none focus:border-accent focus:shadow-focus",
-                            (w.weight || 0) > 0 && "border-accent/40 bg-accent/5 font-semibold text-accent"
-                          )}
-                        />
-                      ) : (
-                        <span className="font-mono text-xs text-text3 tabular-nums">
-                          Σ {customSum.toFixed(3)}
+                      {w.level === 0 ? (
+                        // L0: otomatik %100
+                        <span className="font-mono text-xs text-slate-600 tabular-nums font-semibold">
+                          100.00
                         </span>
+                      ) : (
+                        <div className="relative inline-block">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={w.weight || ""}
+                            onChange={(e) => updateLeafWeight(w.id, e.target.value)}
+                            placeholder={(localPct).toFixed(1)}
+                            className={cn(
+                              "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
+                              "focus:outline-none focus:border-accent focus:shadow-focus",
+                              (w.weight || 0) > 0 && [c.text, "border-2", `border-${w.level === 1 ? "blue" : w.level === 2 ? "purple" : "accent"}/40`, "font-semibold"]
+                            )}
+                          />
+                          {!w.weight && (
+                            <span className={cn("absolute -bottom-3.5 left-0 right-0 text-[9px] tabular-nums", c.text, "opacity-60")}>
+                              auto {localPct.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
 
                     {/* Nihai Ağırlık (%) */}
                     <td className="px-3 py-2.5 border-b border-border text-right">
-                      <span className={cn(
-                        "font-mono text-xs tabular-nums font-semibold",
-                        w.isLeaf ? "text-text" : "text-accent"
-                      )}>
-                        {effectivePct.toFixed(2)}%
+                      <span className={cn("font-mono text-xs tabular-nums font-bold", c.text)}>
+                        {finalPct < 0.01 ? "<0.01" : finalPct.toFixed(2)}%
                       </span>
                     </td>
 
                     {/* Dağılım barı */}
                     <td className="px-3 py-2.5 border-b border-border">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-bg3 rounded-full overflow-hidden max-w-[160px]">
+                        <div className={cn("flex-1 h-2 rounded-full overflow-hidden", c.barBg, "max-w-[200px]")}>
                           <div
-                            className={cn(
-                              "h-full rounded-full transition-[width] duration-500",
-                              w.isLeaf ? "bg-accent" : "bg-blue"
-                            )}
-                            style={{ width: `${Math.min(100, effectivePct * 3)}%` }}
+                            className={cn("h-full rounded-full transition-[width] duration-500", c.bar)}
+                            style={{ width: `${Math.min(100, barWidth)}%` }}
                           />
                         </div>
                       </div>
-                    </td>
-
-                    {/* Plan / Real % */}
-                    <td className="px-3 py-2.5 border-b border-border text-right whitespace-nowrap">
-                      {w.isLeaf && w.quantity > 0 ? (
-                        <span className="font-mono text-xs">
-                          <span className="text-planned font-semibold">
-                            {formatPct(pSum / w.quantity, 0)}
-                          </span>
-                          <span className="text-text3 mx-1">/</span>
-                          <span className="text-realized font-semibold">
-                            {formatPct(rSum / w.quantity, 0)}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-text3 text-xs">—</span>
-                      )}
                     </td>
 
                     {/* Aksiyonlar */}
@@ -451,51 +416,13 @@ export default function WbsPage() {
                   </tr>
                 );
               })}
-              {/* TOPLAM SATIR */}
-              <tr className="sticky bottom-0 z-10 bg-white border-t-2 border-accent/30 font-bold">
-                <td className="px-3 py-3 text-text">
-                  <div className="flex items-center gap-2">
-                    <Scale size={14} className="text-accent" />
-                    Toplam ({totalLeaves} yaprak)
-                  </div>
-                </td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td className="px-3 py-3 text-center">
-                  <span
-                    className={cn(
-                      "font-mono text-xs tabular-nums",
-                      isAutoWeight
-                        ? "text-text3"
-                        : isCustomBalanced
-                        ? "text-green"
-                        : "text-yellow"
-                    )}
-                  >
-                    Σ {customWeightTotal.toFixed(3)}
-                  </span>
-                  {!isAutoWeight && !isCustomBalanced && (
-                    <AlertTriangle size={11} className="inline ml-1 text-yellow" />
-                  )}
-                </td>
-                <td className="px-3 py-3 text-right">
-                  <span className="font-mono text-xs tabular-nums text-accent">100.00%</span>
-                </td>
-                <td className="px-3 py-3">
-                  <div className="h-2 bg-bg3 rounded-full overflow-hidden max-w-[160px]">
-                    <div className="h-full w-full bg-accent rounded-full" />
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-right whitespace-nowrap">
-                  <span className="font-mono text-xs">
-                    <span className="text-planned font-semibold">{formatPct(planPct, 1)}</span>
-                    <span className="text-text3 mx-1">/</span>
-                    <span className="text-realized font-semibold">{formatPct(realPct, 1)}</span>
-                  </span>
-                </td>
-                <td></td>
-              </tr>
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-10 text-center text-text3 text-sm">
+                    Görünür kalem yok. Filtre veya genişletme durumunu kontrol et.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -529,21 +456,25 @@ export default function WbsPage() {
 }
 
 // ============================================================
+// LegendDot
+// ============================================================
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={cn("w-2.5 h-2.5 rounded-sm", color)} />
+      <span className="text-xs text-text2 font-medium">{label}</span>
+    </div>
+  );
+}
+
+// ============================================================
 // StatBlock
 // ============================================================
-const STAT_COLORS: Record<string, string> = {
-  accent: "border-accent/30 bg-accent/5",
-  green: "border-green/30 bg-green/5",
-  yellow: "border-yellow/30 bg-yellow/5",
-  realized: "border-green/30",
-  muted: "border-border",
-};
-const STAT_ICON_BG: Record<string, string> = {
-  accent: "bg-accent/10 text-accent",
-  green: "bg-green/10 text-green",
-  yellow: "bg-yellow/10 text-yellow",
-  realized: "bg-green/10 text-green",
-  muted: "bg-bg3 text-text3",
+const STAT_COLORS: Record<string, { bg: string; icon: string }> = {
+  slate: { bg: "border-border bg-white", icon: "bg-slate-100 text-slate-600" },
+  blue: { bg: "border-blue/20 bg-blue/5", icon: "bg-blue/10 text-blue" },
+  green: { bg: "border-green/20 bg-green/5", icon: "bg-green/10 text-green" },
+  yellow: { bg: "border-yellow/30 bg-yellow/5", icon: "bg-yellow/10 text-yellow" },
 };
 
 function StatBlock({
@@ -551,7 +482,7 @@ function StatBlock({
   value,
   sub,
   icon,
-  color = "muted",
+  color = "slate",
 }: {
   label: string;
   value: React.ReactNode;
@@ -559,18 +490,13 @@ function StatBlock({
   icon?: React.ReactNode;
   color?: string;
 }) {
+  const c = STAT_COLORS[color] || STAT_COLORS.slate;
   return (
-    <div className={cn(
-      "rounded-xl bg-white border p-4 shadow-soft",
-      STAT_COLORS[color] || STAT_COLORS.muted
-    )}>
+    <div className={cn("rounded-xl border p-4 shadow-soft", c.bg)}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] uppercase tracking-wider font-bold text-text3">{label}</div>
         {icon && (
-          <span className={cn(
-            "inline-flex items-center justify-center w-8 h-8 rounded-lg",
-            STAT_ICON_BG[color] || STAT_ICON_BG.muted
-          )}>
+          <span className={cn("inline-flex items-center justify-center w-8 h-8 rounded-lg", c.icon)}>
             {icon}
           </span>
         )}
@@ -612,10 +538,10 @@ function WbsForm({
         </Field>
         <Field label="Seviye">
           <Select value={level} onChange={(e) => setLevel(Number(e.target.value) as 0 | 1 | 2 | 3)}>
-            <option value={0}>Level 0 — Kök</option>
-            <option value={1}>Level 1</option>
-            <option value={2}>Level 2</option>
-            <option value={3}>Level 3 — Yaprak</option>
+            <option value={0}>L0 — Proje Kökü</option>
+            <option value={1}>L1 — Ana Başlık</option>
+            <option value={2}>L2 — Alt Başlık</option>
+            <option value={3}>L3 — İş Kalemi (Yaprak)</option>
           </Select>
         </Field>
         <Field label="Ad" className="sm:col-span-2">
@@ -644,10 +570,14 @@ function WbsForm({
         <Field label="Birim">
           <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="adet, m³, m..." />
         </Field>
-        <Field label="Özel Ağırlık (0 = otomatik)" hint="Tüm yaprakların toplamı 1.000 olmalı">
+        <Field
+          label="Yerel Ağırlık (%)"
+          hint="0 girilirse otomatik eşit dağıtım. Kardeşlerin toplamı 100 olması beklenir."
+          className="sm:col-span-2"
+        >
           <Input
             type="number"
-            step="0.001"
+            step="0.1"
             min="0"
             value={weight}
             onChange={(e) => setWeight(Number(e.target.value) || 0)}

@@ -2,6 +2,137 @@ import { computeEffectiveWeights, sumByDateMap } from "./progress";
 import type { WbsItem, DateQuantityMap, PersonnelAttendance, MachineAttendance, PersonnelMaster, MachineMaster, Discipline } from "@/lib/store/types";
 
 // ============================================================
+// Hiyerarşik ağırlık hesabı
+// Her seviyede kardeşler kendi aralarında %100'e normalize edilir.
+// Nihai ağırlık = parent'ın nihai × kendi yerel oranı.
+// ============================================================
+
+export interface HierarchicalWeight {
+  code: string;
+  level: number;
+  localRaw: number;   // kullanıcının girdiği ham değer (örn. 30 — yorum: %30)
+  localPct: number;   // o seviyedeki normalize edilmiş pay (0..1)
+  finalPct: number;   // proje toplamına oranı (0..1) — kümülatif çarpım
+  parentCode?: string;
+  childCount: number;
+}
+
+/**
+ * Tüm WBS satırları için hiyerarşik ağırlık hesabı.
+ * Tree, code prefix'inden yukarı çıkılarak kurulur (eksik ara parent'lar
+ * varsa en yakın atayı bulur).
+ */
+export function computeHierarchicalWeights(
+  wbs: WbsItem[]
+): Map<string, HierarchicalWeight> {
+  const result = new Map<string, HierarchicalWeight>();
+  const byCode = new Map(wbs.filter((w) => !w.deletedAt).map((w) => [w.code, w]));
+
+  // Her node için, var olan en yakın atayı bul
+  function findExistingParent(code: string): string | undefined {
+    if (!code.includes(".")) return undefined;
+    let p = code.split(".").slice(0, -1).join(".");
+    while (p.length > 0) {
+      if (byCode.has(p)) return p;
+      if (!p.includes(".")) return undefined;
+      p = p.split(".").slice(0, -1).join(".");
+    }
+    return undefined;
+  }
+
+  // Children map
+  const childrenMap: Record<string, WbsItem[]> = { __root__: [] };
+  for (const w of byCode.values()) {
+    const parent = findExistingParent(w.code) ?? "__root__";
+    if (!childrenMap[parent]) childrenMap[parent] = [];
+    childrenMap[parent].push(w);
+  }
+  // Children'ı sırala
+  for (const list of Object.values(childrenMap)) {
+    list.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  }
+
+  // Recursive traverse
+  function visit(parentCode: string, parentFinal: number) {
+    const kids = childrenMap[parentCode] || [];
+    if (kids.length === 0) return;
+
+    const rawSum = kids.reduce((s, c) => s + (c.weight || 0), 0);
+    const allZero = rawSum === 0;
+
+    for (const child of kids) {
+      const raw = child.weight || 0;
+      const localPct = allZero ? 1 / kids.length : raw / rawSum;
+      const finalPct = parentFinal * localPct;
+      result.set(child.code, {
+        code: child.code,
+        level: child.level,
+        localRaw: raw,
+        localPct,
+        finalPct,
+        parentCode: parentCode === "__root__" ? undefined : parentCode,
+        childCount: (childrenMap[child.code] || []).length,
+      });
+      visit(child.code, finalPct);
+    }
+  }
+
+  visit("__root__", 1.0);
+  return result;
+}
+
+/**
+ * Her parent altında kardeşlerin yerel ham ağırlık toplamı.
+ * Doğrulama için kullanılır (kullanıcı 100 olmasını bekler ama 60 girdiyse uyarılır).
+ */
+export interface ParentWeightSummary {
+  parentCode: string | "__root__";
+  parentName: string;
+  childCount: number;
+  rawSum: number;
+  isAutoMode: boolean;     // tüm child'lar 0 ise
+  isBalanced: boolean;     // rawSum ≈ 100 (veya 1)
+}
+
+export function getParentWeightSummaries(
+  wbs: WbsItem[]
+): ParentWeightSummary[] {
+  const byCode = new Map(wbs.filter((w) => !w.deletedAt).map((w) => [w.code, w]));
+  function findExistingParent(code: string): string | undefined {
+    if (!code.includes(".")) return undefined;
+    let p = code.split(".").slice(0, -1).join(".");
+    while (p.length > 0) {
+      if (byCode.has(p)) return p;
+      if (!p.includes(".")) return undefined;
+      p = p.split(".").slice(0, -1).join(".");
+    }
+    return undefined;
+  }
+  const groups: Record<string, WbsItem[]> = {};
+  for (const w of byCode.values()) {
+    const parent = findExistingParent(w.code) ?? "__root__";
+    if (!groups[parent]) groups[parent] = [];
+    groups[parent].push(w);
+  }
+  return Object.entries(groups).map(([parentCode, children]) => {
+    const rawSum = children.reduce((s, c) => s + (c.weight || 0), 0);
+    const isAutoMode = rawSum === 0;
+    // 1 veya 100 kabul edilen "denge"
+    const isBalanced =
+      !isAutoMode && (Math.abs(rawSum - 100) < 0.5 || Math.abs(rawSum - 1) < 0.005);
+    const parentItem = parentCode === "__root__" ? undefined : byCode.get(parentCode);
+    return {
+      parentCode: parentCode as ParentWeightSummary["parentCode"],
+      parentName: parentItem?.name ?? "Proje Kökü",
+      childCount: children.length,
+      rawSum,
+      isAutoMode,
+      isBalanced,
+    };
+  });
+}
+
+// ============================================================
 // Section / L1-L2 progress
 // ============================================================
 
