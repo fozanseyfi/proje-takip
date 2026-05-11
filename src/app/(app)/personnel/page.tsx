@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { HardHat, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { HardHat, ChevronLeft, ChevronRight, Users, Search, X } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser } from "@/lib/store";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
@@ -23,18 +23,46 @@ export default function PersonnelAttendancePage() {
 
   const [date, setDate] = useState(toISODate(new Date()));
   const [filterDiscipline, setFilterDiscipline] = useState<string>("");
+  const [filterCompany, setFilterCompany] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
 
-  const assignedPersonnel = useMemo(() => {
+  // Tüm atanmış personel (filtre uygulanmamış — toplam sayım için)
+  const allAssigned = useMemo(() => {
     if (!project) return [];
     const ids = new Set(
       assignments
         .filter((a) => a.projectId === project.id && !a.assignedTo)
         .map((a) => a.personnelMasterId)
     );
-    return personnel
-      .filter((p) => ids.has(p.id))
-      .filter((p) => !filterDiscipline || p.discipline === filterDiscipline);
-  }, [assignments, personnel, project, filterDiscipline]);
+    return personnel.filter((p) => ids.has(p.id));
+  }, [assignments, personnel, project]);
+
+  // Atanmış personeldeki benzersiz firmalar
+  const companies = useMemo(
+    () =>
+      Array.from(new Set(allAssigned.map((p) => p.company).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "tr")
+      ),
+    [allAssigned]
+  );
+
+  const assignedPersonnel = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return allAssigned
+      .filter((p) => !filterDiscipline || p.discipline === filterDiscipline)
+      .filter((p) => !filterCompany || p.company === filterCompany)
+      .filter((p) => {
+        if (!q) return true;
+        return (
+          p.firstName.toLowerCase().includes(q) ||
+          p.lastName.toLowerCase().includes(q) ||
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
+          p.company.toLowerCase().includes(q) ||
+          (p.jobTitle || "").toLowerCase().includes(q) ||
+          (p.tcKimlikNo || "").includes(q)
+        );
+      });
+  }, [allAssigned, filterDiscipline, filterCompany, search]);
 
   // Mevcut puantaj durumu (date için)
   const existingAttendance = useMemo(() => {
@@ -52,16 +80,16 @@ export default function PersonnelAttendancePage() {
   type Draft = { present: boolean; hours: number };
   const [draft, setDraft] = useState<Record<string, Draft>>({});
 
-  // İlk yükte veya tarih değişince draft'ı yenile
+  // İlk yükte veya tarih değişince draft'ı yenile (tüm atanmışlar için, search'ten bağımsız)
   useEffect(() => {
     const d: Record<string, Draft> = {};
-    for (const p of assignedPersonnel) {
+    for (const p of allAssigned) {
       const ex = existingAttendance.get(p.id);
       d[p.id] = ex ?? { present: true, hours: 9 };
     }
     setDraft(d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, assignedPersonnel.length]);
+  }, [date, allAssigned.length]);
 
   function togglePresent(id: string) {
     setDraft((s) => ({ ...s, [id]: { ...s[id], present: !s[id]?.present } }));
@@ -75,7 +103,8 @@ export default function PersonnelAttendancePage() {
 
   function save() {
     if (!project || !user) return;
-    const records = assignedPersonnel.map((p) => ({
+    // Save tüm atanmış personeli kaydet (görünür olanlarla sınırlı değil)
+    const records = allAssigned.map((p) => ({
       projectId: project.id,
       personnelMasterId: p.id,
       date,
@@ -93,7 +122,37 @@ export default function PersonnelAttendancePage() {
     setDate(toISODate(d));
   }
 
-  const presentCount = Object.values(draft).filter((d) => d.present).length;
+  // Toplam: tüm atanmış personelin present sayısı (sayım için)
+  const totalPresentCount = useMemo(
+    () => allAssigned.filter((p) => draft[p.id]?.present).length,
+    [allAssigned, draft]
+  );
+  // Görünür olanların kaçı işaretli
+  const visiblePresentCount = useMemo(
+    () => assignedPersonnel.filter((p) => draft[p.id]?.present).length,
+    [assignedPersonnel, draft]
+  );
+  const allVisibleSelected =
+    assignedPersonnel.length > 0 && visiblePresentCount === assignedPersonnel.length;
+
+  function toggleAllVisible() {
+    const newValue = !allVisibleSelected;
+    setDraft((s) => {
+      const newDraft = { ...s };
+      for (const p of assignedPersonnel) {
+        newDraft[p.id] = { ...newDraft[p.id], present: newValue, hours: newDraft[p.id]?.hours ?? 9 };
+      }
+      return newDraft;
+    });
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setFilterDiscipline("");
+    setFilterCompany("");
+  }
+
+  const hasActiveFilter = !!(search || filterDiscipline || filterCompany);
 
   if (!project) {
     return (
@@ -112,34 +171,59 @@ export default function PersonnelAttendancePage() {
         icon={HardHat}
         actions={
           <Button variant="accent" onClick={save}>
-            Kaydet ({presentCount}/{assignedPersonnel.length})
+            Kaydet ({totalPresentCount}/{allAssigned.length})
           </Button>
         }
       />
 
-      <Card className="mb-4">
+      <Card className="mb-4 !p-4">
         <div className="flex flex-wrap items-end gap-3">
+          {/* Tarih navigasyon */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => shiftDate(-1)}
-              className="p-2 rounded-md bg-bg4 hover:bg-bg3 text-text2"
+              className="w-10 h-10 rounded-lg bg-white border border-border hover:bg-bg2 hover:border-text3 text-text2 flex items-center justify-center transition-all shadow-soft"
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={16} />
             </button>
             <Input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-44 font-mono"
+              className="w-44 !h-10 font-mono text-sm"
             />
             <button
               onClick={() => shiftDate(1)}
-              className="p-2 rounded-md bg-bg4 hover:bg-bg3 text-text2"
+              className="w-10 h-10 rounded-lg bg-white border border-border hover:bg-bg2 hover:border-text3 text-text2 flex items-center justify-center transition-all shadow-soft"
             >
-              <ChevronRight size={14} />
+              <ChevronRight size={16} />
             </button>
           </div>
-          <Field label="Disiplin filtresi" className="w-44">
+
+          {/* Arama */}
+          <Field label="Ara" className="min-w-[200px]">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text3 pointer-events-none" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ad / soyad / firma / görev"
+                className="pl-9 pr-8"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text3 hover:text-text hover:bg-bg3"
+                  aria-label="Temizle"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </Field>
+
+          {/* Disiplin filtresi */}
+          <Field label="Disiplin" className="w-40">
             <Select value={filterDiscipline} onChange={(e) => setFilterDiscipline(e.target.value)}>
               <option value="">Tümü</option>
               <option value="mekanik">Mekanik</option>
@@ -150,14 +234,47 @@ export default function PersonnelAttendancePage() {
               <option value="diger">Diğer</option>
             </Select>
           </Field>
-          <div className="ml-auto flex items-center gap-3">
-            <Badge variant="green">{presentCount} işaretli</Badge>
-            <Badge variant="gray">{assignedPersonnel.length - presentCount} işaretsiz</Badge>
+
+          {/* Firma filtresi */}
+          <Field label="Firma" className="min-w-[180px]">
+            <Select value={filterCompany} onChange={(e) => setFilterCompany(e.target.value)}>
+              <option value="">Tümü ({companies.length})</option>
+              {companies.map((c) => {
+                const n = allAssigned.filter((p) => p.company === c).length;
+                return (
+                  <option key={c} value={c}>
+                    {c} ({n})
+                  </option>
+                );
+              })}
+            </Select>
+          </Field>
+
+          {hasActiveFilter && (
+            <Button variant="outline" onClick={clearFilters} size="md">
+              <X size={14} /> Filtreyi Temizle
+            </Button>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant={allVisibleSelected ? "soft" : "outline"} onClick={toggleAllVisible} size="md">
+              {allVisibleSelected ? "Görünürlerin Tikini Kaldır" : "Görünürlerin Hepsini Seç"}
+            </Button>
+            <div className="flex flex-col items-end gap-0.5 ml-1">
+              <Badge variant="green">
+                {totalPresentCount} / {allAssigned.length} toplam
+              </Badge>
+              {hasActiveFilter && (
+                <Badge variant="blue">
+                  {visiblePresentCount} / {assignedPersonnel.length} görünür
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
       </Card>
 
-      {assignedPersonnel.length === 0 ? (
+      {allAssigned.length === 0 ? (
         <Card>
           <CardTitle>Atanmış personel yok</CardTitle>
           <p className="text-sm text-text2 mb-3">
@@ -168,6 +285,18 @@ export default function PersonnelAttendancePage() {
               <Users size={14} /> Master Data&apos;ya git
             </Button>
           </Link>
+        </Card>
+      ) : assignedPersonnel.length === 0 ? (
+        <Card>
+          <CardTitle>Filtreye uyan kayıt yok</CardTitle>
+          <p className="text-sm text-text2 mb-3">
+            Arama: <strong className="text-text">{search || "—"}</strong> ·
+            Disiplin: <strong className="text-text">{filterDiscipline || "tümü"}</strong> ·
+            Firma: <strong className="text-text">{filterCompany || "tümü"}</strong>
+          </p>
+          <Button variant="accent" onClick={clearFilters}>
+            <X size={14} /> Filtreyi Temizle
+          </Button>
         </Card>
       ) : (
         <Card>
