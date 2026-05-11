@@ -10,10 +10,13 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
-  Scale,
   AlertTriangle,
   CheckCircle2,
   Sparkles,
+  Layers3,
+  Layers2,
+  Layers,
+  FileText,
 } from "lucide-react";
 import { useStore, useCurrentProject, useProjectWbs } from "@/lib/store";
 import { PageHeader } from "@/components/layout/page-header";
@@ -29,6 +32,8 @@ import {
   getParentWeightSummaries,
 } from "@/lib/calc/sections";
 import type { WbsItem } from "@/lib/store/types";
+
+type ViewMode = "all" | "main" | "sub" | "items";
 
 // Level renkleri (bar + nihai ağırlık)
 const LEVEL_COLOR: Record<number, { bar: string; barBg: string; text: string }> = {
@@ -57,6 +62,7 @@ export default function WbsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [allExpanded, setAllExpanded] = useState<boolean>(false);
   const [filterDiscipline, setFilterDiscipline] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
 
   const sorted = useMemo(
     () => [...allWbs].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
@@ -90,9 +96,18 @@ export default function WbsPage() {
     return true;
   }
 
-  const visible = sorted.filter(
-    (w) => isVisible(w.code) && (!filterDiscipline || w.discipline === filterDiscipline)
-  );
+  const visible = sorted.filter((w) => {
+    // L0 (Proje kökü) hiç gösterilmez
+    if (w.level === 0) return false;
+    // Disiplin filtresi
+    if (filterDiscipline && w.discipline !== filterDiscipline) return false;
+    // Görünüm modu
+    if (viewMode === "main") return w.level === 1;
+    if (viewMode === "sub") return w.level === 2;
+    if (viewMode === "items") return w.level === 3;
+    // mode "all": expand mantığına göre
+    return isVisible(w.code);
+  });
 
   function toggleExpand(code: string) {
     setExpanded((s) => {
@@ -147,24 +162,79 @@ export default function WbsPage() {
         description={`${totalNodes} madde · ${l1Count} ana başlık · ${l2Count} alt başlık · ${leafCount} iş kalemi`}
         icon={FolderTree}
         actions={
-          <>
-            <Button variant="outline" onClick={toggleAll}>
-              {allExpanded ? (
-                <>
-                  <ChevronsDownUp size={14} /> Tümünü Kapa
-                </>
-              ) : (
-                <>
-                  <ChevronsUpDown size={14} /> Tümünü Aç
-                </>
-              )}
-            </Button>
-            <Button variant="accent" onClick={() => setCreating(true)}>
-              <Plus size={14} /> Yeni WBS
-            </Button>
-          </>
+          <Button variant="accent" onClick={() => setCreating(true)}>
+            <Plus size={14} /> Yeni WBS
+          </Button>
         }
       />
+
+      {/* GÖRÜNÜM MODU */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="text-[10px] uppercase tracking-wider font-bold text-text3 mr-1">Görünüm:</span>
+        <div className="inline-flex gap-1 p-1 bg-bg2 border border-border rounded-xl">
+          <ModePill
+            active={viewMode === "main"}
+            onClick={() => setViewMode("main")}
+            icon={<Layers3 size={14} />}
+            label="Ana Başlıklar"
+            count={l1Count}
+            colorClass="text-blue"
+          />
+          <ModePill
+            active={viewMode === "sub"}
+            onClick={() => setViewMode("sub")}
+            icon={<Layers2 size={14} />}
+            label="Alt Başlıklar"
+            count={l2Count}
+            colorClass="text-purple"
+          />
+          <ModePill
+            active={viewMode === "items"}
+            onClick={() => setViewMode("items")}
+            icon={<FileText size={14} />}
+            label="İş Kalemleri"
+            count={leafCount}
+            colorClass="text-accent"
+          />
+          <ModePill
+            active={viewMode === "all"}
+            onClick={() => setViewMode("all")}
+            icon={<Layers size={14} />}
+            label="Tümü"
+            count={totalNodes - 1}
+            colorClass="text-text"
+          />
+        </div>
+        {viewMode === "all" && (
+          <Button variant="outline" onClick={toggleAll} className="ml-2">
+            {allExpanded ? (
+              <>
+                <ChevronsDownUp size={14} /> Tümünü Kapa
+              </>
+            ) : (
+              <>
+                <ChevronsUpDown size={14} /> Tümünü Aç
+              </>
+            )}
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2 text-xs">
+          <span className="text-text3 font-bold uppercase tracking-wider">Disiplin:</span>
+          <Select
+            value={filterDiscipline}
+            onChange={(e) => setFilterDiscipline(e.target.value)}
+            className="!h-9 !min-w-[140px]"
+          >
+            <option value="">Tümü</option>
+            <option value="mekanik">Mekanik</option>
+            <option value="elektrik">Elektrik</option>
+            <option value="insaat">İnşaat</option>
+            <option value="muhendislik">Mühendislik</option>
+            <option value="idari">İdari</option>
+            <option value="diger">Diğer</option>
+          </Select>
+        </div>
+      </div>
 
       {/* Üst stat */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -223,33 +293,6 @@ export default function WbsPage() {
         </Alert>
       )}
 
-      {/* Aksiyon barı */}
-      <Card className="!p-4 mb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-text3">Renk Açıklaması:</span>
-          <LegendDot color="bg-slate-500" label="Proje" />
-          <LegendDot color="bg-blue" label="Ana Başlık (L1)" />
-          <LegendDot color="bg-purple" label="Alt Başlık (L2)" />
-          <LegendDot color="bg-accent" label="İş Kalemi (L3)" />
-          <div className="ml-auto flex items-center gap-2 text-xs">
-            <span className="text-text3 font-bold uppercase tracking-wider">Disiplin:</span>
-            <Select
-              value={filterDiscipline}
-              onChange={(e) => setFilterDiscipline(e.target.value)}
-              className="!h-9 !min-w-[160px]"
-            >
-              <option value="">Tümü</option>
-              <option value="mekanik">Mekanik</option>
-              <option value="elektrik">Elektrik</option>
-              <option value="insaat">İnşaat</option>
-              <option value="muhendislik">Mühendislik</option>
-              <option value="idari">İdari</option>
-              <option value="diger">Diğer</option>
-            </Select>
-          </div>
-        </div>
-      </Card>
-
       {/* Ana tablo */}
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto max-h-[72vh] overflow-y-auto">
@@ -271,11 +314,8 @@ export default function WbsPage() {
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-center text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[7rem]">
                   Yerel Ağırlık (%)
                 </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap">
-                  Nihai Ağırlık (%)
-                </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[12rem]">
-                  Dağılım
+                <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[20rem]">
+                  Nihai Ağırlık · Dağılım
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 border-b border-border w-16"></th>
               </tr>
@@ -305,7 +345,7 @@ export default function WbsPage() {
                       w.level === 2 && "font-semibold text-purple",
                       w.level === 3 && "text-text"
                     )}>
-                      <div className="flex items-center gap-1.5" style={{ paddingLeft: `${w.level * 16}px` }}>
+                      <div className="flex items-center gap-1.5" style={{ paddingLeft: `${(w.level - 1) * 16}px` }}>
                         {hasChildren ? (
                           <button
                             onClick={() => toggleExpand(w.code)}
@@ -372,22 +412,21 @@ export default function WbsPage() {
                       )}
                     </td>
 
-                    {/* Nihai Ağırlık (%) */}
-                    <td className="px-3 py-2.5 border-b border-border text-right">
-                      <span className={cn("font-mono text-xs tabular-nums font-bold", c.text)}>
-                        {finalPct < 0.01 ? "<0.01" : finalPct.toFixed(2)}%
-                      </span>
-                    </td>
-
-                    {/* Dağılım barı */}
+                    {/* Nihai Ağırlık · Dağılım */}
                     <td className="px-3 py-2.5 border-b border-border">
                       <div className="flex items-center gap-2">
-                        <div className={cn("flex-1 h-2 rounded-full overflow-hidden", c.barBg, "max-w-[200px]")}>
+                        <div className={cn("flex-1 h-3 rounded-full overflow-hidden", c.barBg)}>
                           <div
-                            className={cn("h-full rounded-full transition-[width] duration-500", c.bar)}
+                            className={cn(
+                              "h-full rounded-full transition-[width] duration-500 shadow-[inset_0_-1px_0_rgba(0,0,0,0.05)]",
+                              c.bar
+                            )}
                             style={{ width: `${Math.min(100, barWidth)}%` }}
                           />
                         </div>
+                        <span className={cn("text-[10px] font-mono font-bold tabular-nums w-12 text-right", c.text)}>
+                          {finalPct < 0.01 ? "<0.01" : finalPct.toFixed(2)}%
+                        </span>
                       </div>
                     </td>
 
@@ -456,14 +495,44 @@ export default function WbsPage() {
 }
 
 // ============================================================
-// LegendDot
+// ModePill — görünüm modu butonu
 // ============================================================
-function LegendDot({ color, label }: { color: string; label: string }) {
+function ModePill({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+  colorClass,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+  colorClass: string;
+}) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className={cn("w-2.5 h-2.5 rounded-sm", color)} />
-      <span className="text-xs text-text2 font-medium">{label}</span>
-    </div>
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-2 h-9 px-3.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap",
+        active
+          ? "bg-white shadow-soft border border-border text-text"
+          : "text-text2 hover:text-text"
+      )}
+    >
+      <span className={active ? colorClass : "text-text3"}>{icon}</span>
+      {label}
+      <span
+        className={cn(
+          "inline-flex items-center justify-center min-w-[22px] h-[20px] px-1.5 rounded-md text-[11px] font-bold tabular-nums",
+          active ? "bg-bg3 text-text2" : "bg-bg3 text-text3"
+        )}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 
