@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { DEFAULT_WBS } from "@/lib/data/default-wbs";
 import { uid, toISODate } from "@/lib/utils";
+import { buildSamplePayload, SAMPLE_PROJECT_NAME } from "@/lib/data/sample-loader";
 
 // ============================================================
 // State shape
@@ -164,72 +165,13 @@ export interface StoreState {
 // ============================================================
 const now = () => new Date().toISOString();
 
-function makeSeedProject(userId: string): {
-  user: User;
-  project: Project;
-  member: ProjectMember;
-  wbs: WbsItem[];
-} {
-  const user: User = {
-    id: userId,
-    email: "ozan.seyfi@kontrolmatik.com",
-    fullName: "Ozan Seyfi",
-    isSuperAdmin: true,
-    createdAt: now(),
-  };
-
-  const startDate = "2026-01-01";
-  const durationDays = 240;
-  const start = new Date(startDate);
-  const plannedEnd = new Date(start);
-  plannedEnd.setDate(plannedEnd.getDate() + durationDays);
-
-  const project: Project = {
-    id: uid(),
-    name: "Konya GES 1",
-    location: "Konya, Karapınar",
-    latitude: 37.7156,
-    longitude: 33.5471,
-    wbsNo: "1",
-    startDate,
-    durationDays,
-    plannedEnd: toISODate(plannedEnd),
-    contractEnd: toISODate(plannedEnd),
-    reportDate: toISODate(new Date()),
-    installedCapacityMw: 10.5,
-    totalBudget: 350_000_000,
-    budgetCurrency: "TRY",
-    status: "active",
-    createdBy: userId,
-    createdAt: now(),
-    updatedAt: now(),
-  };
-
-  const member: ProjectMember = {
-    id: uid(),
-    projectId: project.id,
-    userId,
-    role: "super_admin",
-    invitedBy: userId,
-    invitedAt: now(),
-    acceptedAt: now(),
-  };
-
-  const wbs: WbsItem[] = DEFAULT_WBS.map((w) => ({
-    id: uid(),
-    projectId: project.id,
-    code: w.code,
-    name: w.name,
-    level: w.level,
-    isLeaf: w.isLeaf,
-    weight: w.weight,
-    quantity: w.quantity,
-    unit: w.unit,
-    parentCode: w.code.includes(".") ? w.code.split(".").slice(0, -1).join(".") : undefined,
-  }));
-
-  return { user, project, member, wbs };
-}
+const DEFAULT_USER: User = {
+  id: "",
+  email: "ozan.seyfi@kontrolmatik.com",
+  fullName: "Ozan Seyfi",
+  isSuperAdmin: true,
+  createdAt: "",
+};
 
 // ============================================================
 // Store
@@ -274,16 +216,54 @@ export const useStore = create<StoreState>()(
 
       seedIfEmpty: () => {
         const s = get();
-        if (s._seeded || s.projects.length > 0) return;
-        const userId = uid();
-        const seed = makeSeedProject(userId);
+
+        // Örnek proje sistemin sabiti — yoksa otomatik yükle (sürekli)
+        const hasSample = s.projects.some((p) => p.name === SAMPLE_PROJECT_NAME);
+        if (hasSample) {
+          // Sadece flag'i set et, başka değişiklik yok
+          if (!s._seeded) set({ _seeded: true });
+          return;
+        }
+
+        // 1. User yoksa default super admin'i yarat
+        let userId = s.currentUserId;
+        let users = s.users;
+        if (!userId) {
+          const newUser: User = {
+            ...DEFAULT_USER,
+            id: uid(),
+            createdAt: now(),
+          };
+          users = [...s.users, newUser];
+          userId = newUser.id;
+        }
+
+        // 2. Örnek proje payload'unu üret
+        const p = buildSamplePayload(userId);
+
+        // 3. State'i tek mutation ile güncelle
         set({
-          users: [seed.user],
-          currentUserId: seed.user.id,
-          projects: [seed.project],
-          currentProjectId: seed.project.id,
-          members: [seed.member],
-          wbs: seed.wbs,
+          users,
+          currentUserId: userId,
+          projects: [...s.projects, p.project],
+          currentProjectId: p.project.id,
+          members: [...s.members, p.member],
+          wbs: [...s.wbs, ...p.wbs],
+          planned: { ...s.planned, [p.project.id]: p.planned },
+          realized: { ...s.realized, [p.project.id]: p.realized },
+          personnelMaster: [...s.personnelMaster, ...p.personnel],
+          personnelAssignments: [...s.personnelAssignments, ...p.personnelAssignments],
+          personnelAttendance: [...s.personnelAttendance, ...p.personnelAttendance],
+          machinesMaster: [...s.machinesMaster, ...p.machines],
+          machineAssignments: [...s.machineAssignments, ...p.machineAssignments],
+          machineAttendance: [...s.machineAttendance, ...p.machineAttendance],
+          dailyReports: [...s.dailyReports, ...p.dailyReports],
+          procurement: [...s.procurement, ...p.procurement],
+          lookahead: [...s.lookahead, ...p.lookahead],
+          budgetCategories: [...s.budgetCategories, ...p.budgetCategories],
+          budgetActuals: [...s.budgetActuals, ...p.budgetActuals],
+          subcontractors: [...s.subcontractors, ...p.subcontractors],
+          billing: [...s.billing, ...p.billing],
           _seeded: true,
         });
       },
@@ -682,7 +662,37 @@ export const useStore = create<StoreState>()(
     {
       name: "ges-store",
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        // v1 → v2: eski "Konya GES 1" default seed'ini temizle,
+        // Ankara Polatlı GES sample seedIfEmpty tarafından yüklenecek.
+        if (version < 2) {
+          const s = persistedState as Partial<StoreState>;
+          const filteredProjects = (s.projects ?? []).filter((p) => p.name !== "Konya GES 1");
+          const removedIds = new Set(
+            (s.projects ?? []).filter((p) => p.name === "Konya GES 1").map((p) => p.id)
+          );
+          const filteredPlanned = { ...(s.planned ?? {}) };
+          const filteredRealized = { ...(s.realized ?? {}) };
+          for (const id of removedIds) {
+            delete filteredPlanned[id];
+            delete filteredRealized[id];
+          }
+          return {
+            ...s,
+            projects: filteredProjects,
+            wbs: (s.wbs ?? []).filter((w) => !removedIds.has(w.projectId)),
+            members: (s.members ?? []).filter((m) => !removedIds.has(m.projectId)),
+            currentProjectId: removedIds.has(s.currentProjectId ?? "")
+              ? null
+              : s.currentProjectId ?? null,
+            planned: filteredPlanned,
+            realized: filteredRealized,
+            _seeded: false,
+          } as StoreState;
+        }
+        return persistedState as StoreState;
+      },
     }
   )
 );

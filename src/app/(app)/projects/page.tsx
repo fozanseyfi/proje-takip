@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, FolderKanban, MapPin, Calendar, ArrowRight, Sun, Sparkles } from "lucide-react";
+import { Plus, FolderKanban, MapPin, Calendar, ArrowRight, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -11,32 +11,28 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/components/ui/toast";
 import { formatDate, toISODate, addDays } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/store";
 import type { Currency } from "@/lib/utils";
-import { loadSampleProject } from "@/lib/data/sample-loader";
+import { SAMPLE_PROJECT_NAME } from "@/lib/data/sample-loader";
 
 export default function ProjectsPage() {
   const projects = useStore((s) => s.projects);
   const createProject = useStore((s) => s.createProject);
   const setCurrentProject = useStore((s) => s.setCurrentProject);
   const user = useCurrentUser();
-  const toast = useToast((s) => s.push);
   const [open, setOpen] = useState(false);
 
-  function loadSample() {
-    if (!user) return;
-    if (projects.some((p) => p.name === "Ankara Polatlı GES")) {
-      if (!confirm("'Ankara Polatlı GES' projesi zaten yüklenmiş. Yine de eklensin mi?")) return;
-    }
-    const { projectId } = loadSampleProject(user.id);
-    setCurrentProject(projectId);
-    toast("Ankara Polatlı GES örnek projesi yüklendi · Dashboard'a yönlendiriliyorsun", "success");
-    setTimeout(() => {
-      window.location.href = "/dashboard";
-    }, 800);
-  }
+  // Örnek proje her zaman en başta sabit
+  const sortedProjects = useMemo(
+    () =>
+      [...projects].sort((a, b) => {
+        if (a.name === SAMPLE_PROJECT_NAME) return -1;
+        if (b.name === SAMPLE_PROJECT_NAME) return 1;
+        return a.name.localeCompare(b.name);
+      }),
+    [projects]
+  );
 
   const [form, setForm] = useState({
     name: "",
@@ -78,14 +74,9 @@ export default function ProjectsPage() {
         description="Tüm projelerin listesi"
         icon={FolderKanban}
         actions={
-          <>
-            <Button variant="outline" onClick={loadSample}>
-              <Sparkles size={14} /> Örnek Proje Yükle
-            </Button>
-            <Button variant="accent" onClick={() => setOpen(true)}>
-              <Plus size={14} /> Yeni Proje
-            </Button>
-          </>
+          <Button variant="accent" onClick={() => setOpen(true)}>
+            <Plus size={14} /> Yeni Proje
+          </Button>
         }
       />
 
@@ -100,21 +91,27 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p, i) => (
+          {sortedProjects.map((p, i) => {
+            const isSample = p.name === SAMPLE_PROJECT_NAME;
+            return (
             <Card
               key={p.id}
               className={cn(
-                "hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)] transition-all duration-300",
+                "hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-medium transition-all duration-300",
                 "animate-slide-up",
                 i === 0 && "animate-slide-up-delay-1",
                 i === 1 && "animate-slide-up-delay-2",
                 i === 2 && "animate-slide-up-delay-3",
-                i >= 3 && "animate-slide-up-delay-4"
+                i >= 3 && "animate-slide-up-delay-4",
+                isSample && "border-accent/30 bg-gradient-to-br from-accent/5 to-white"
               )}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="min-w-0">
-                  <div className="font-display font-bold text-lg text-text mb-1 truncate">{p.name}</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-display font-bold text-lg text-text truncate">{p.name}</div>
+                    {isSample && <Badge variant="accent">📌 Örnek</Badge>}
+                  </div>
                   <div className="flex items-center gap-1 text-xs text-text3">
                     <MapPin size={12} />
                     {p.location}
@@ -173,7 +170,8 @@ export default function ProjectsPage() {
                 </Link>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

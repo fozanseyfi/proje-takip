@@ -17,6 +17,7 @@ import {
 } from "./sample-pools";
 import type {
   Project,
+  ProjectMember,
   WbsItem,
   DateQuantityMap,
   PersonnelMaster,
@@ -35,6 +36,29 @@ import type {
   Discipline,
   Priority,
 } from "@/lib/store/types";
+
+export const SAMPLE_PROJECT_NAME = "Ankara Polatlı GES";
+
+export interface SamplePayload {
+  project: Project;
+  member: ProjectMember;
+  wbs: WbsItem[];
+  planned: DateQuantityMap;
+  realized: DateQuantityMap;
+  personnel: PersonnelMaster[];
+  personnelAssignments: PersonnelAssignment[];
+  personnelAttendance: PersonnelAttendance[];
+  machines: MachineMaster[];
+  machineAssignments: MachineAssignment[];
+  machineAttendance: MachineAttendance[];
+  dailyReports: DailyReport[];
+  procurement: ProcurementItem[];
+  lookahead: LookaheadItem[];
+  budgetCategories: BudgetCategory[];
+  budgetActuals: BudgetActual[];
+  subcontractors: Subcontractor[];
+  billing: BillingItem[];
+}
 
 // ============================================================
 // Sözde-random (deterministic, her yüklemede aynı veri)
@@ -66,7 +90,7 @@ function buildProject(userId: string): Project {
   const plannedEnd = toISODate(addDays(start, 120));
   return {
     id: uid(),
-    name: "Ankara Polatlı GES",
+    name: SAMPLE_PROJECT_NAME,
     location: "Ankara, Polatlı",
     latitude: 39.5836,
     longitude: 32.1465,
@@ -684,9 +708,10 @@ function buildBilling(project: Project, subcontractors: Subcontractor[], rng: ()
 }
 
 // ============================================================
-// MAIN — tek state mutation
+// PAYLOAD — sadece data hesaplar, state'e dokunmaz
+// (store içinden de UI'dan da çağrılabilir, sirküler import yok)
 // ============================================================
-export function loadSampleProject(userId: string): { projectId: string } {
+export function buildSamplePayload(userId: string): SamplePayload {
   const rng = makeRng(424242);   // deterministic
 
   const project = buildProject(userId);
@@ -706,39 +731,63 @@ export function loadSampleProject(userId: string): { projectId: string } {
   const subcontractors = buildSubcontractors(project);
   const billing = buildBilling(project, subcontractors, rng);
 
-  // Project owner = current user as member
-  const member = {
+  const member: ProjectMember = {
     id: uid(),
     projectId: project.id,
     userId,
-    role: "project_manager" as const,
+    role: "project_manager",
     invitedBy: userId,
     invitedAt: new Date().toISOString(),
     acceptedAt: new Date().toISOString(),
   };
 
-  // State'i atomik olarak güncelle
-  useStore.setState((s) => ({
-    projects: [...s.projects, project],
-    currentProjectId: project.id,
-    members: [...s.members, member],
-    wbs: [...s.wbs, ...wbs],
-    planned: { ...s.planned, [project.id]: planned },
-    realized: { ...s.realized, [project.id]: realized },
-    personnelMaster: [...s.personnelMaster, ...personnel],
-    personnelAssignments: [...s.personnelAssignments, ...personnelAssignments],
-    personnelAttendance: [...s.personnelAttendance, ...personnelAttendance],
-    machinesMaster: [...s.machinesMaster, ...machines],
-    machineAssignments: [...s.machineAssignments, ...machineAssignments],
-    machineAttendance: [...s.machineAttendance, ...machineAttendance],
-    dailyReports: [...s.dailyReports, ...dailyReports],
-    procurement: [...s.procurement, ...procurement],
-    lookahead: [...s.lookahead, ...lookahead],
-    budgetCategories: [...s.budgetCategories, ...budgetCategories],
-    budgetActuals: [...s.budgetActuals, ...budgetActuals],
-    subcontractors: [...s.subcontractors, ...subcontractors],
-    billing: [...s.billing, ...billing],
-  }));
+  return {
+    project,
+    member,
+    wbs,
+    planned,
+    realized,
+    personnel,
+    personnelAssignments,
+    personnelAttendance,
+    machines,
+    machineAssignments,
+    machineAttendance,
+    dailyReports,
+    procurement,
+    lookahead,
+    budgetCategories,
+    budgetActuals,
+    subcontractors,
+    billing,
+  };
+}
 
-  return { projectId: project.id };
+// ============================================================
+// UI helper — payload + state mutation (Projeler sayfası butonu için)
+// ============================================================
+export function loadSampleProject(userId: string): { projectId: string } {
+  const p = buildSamplePayload(userId);
+  useStore.setState((s) => ({
+    projects: [...s.projects, p.project],
+    currentProjectId: p.project.id,
+    members: [...s.members, p.member],
+    wbs: [...s.wbs, ...p.wbs],
+    planned: { ...s.planned, [p.project.id]: p.planned },
+    realized: { ...s.realized, [p.project.id]: p.realized },
+    personnelMaster: [...s.personnelMaster, ...p.personnel],
+    personnelAssignments: [...s.personnelAssignments, ...p.personnelAssignments],
+    personnelAttendance: [...s.personnelAttendance, ...p.personnelAttendance],
+    machinesMaster: [...s.machinesMaster, ...p.machines],
+    machineAssignments: [...s.machineAssignments, ...p.machineAssignments],
+    machineAttendance: [...s.machineAttendance, ...p.machineAttendance],
+    dailyReports: [...s.dailyReports, ...p.dailyReports],
+    procurement: [...s.procurement, ...p.procurement],
+    lookahead: [...s.lookahead, ...p.lookahead],
+    budgetCategories: [...s.budgetCategories, ...p.budgetCategories],
+    budgetActuals: [...s.budgetActuals, ...p.budgetActuals],
+    subcontractors: [...s.subcontractors, ...p.subcontractors],
+    billing: [...s.billing, ...p.billing],
+  }));
+  return { projectId: p.project.id };
 }

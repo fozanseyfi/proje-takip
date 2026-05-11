@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Globe, ArrowUpDown, MapPin, TrendingUp } from "lucide-react";
+import { Globe, ArrowUpDown, MapPin } from "lucide-react";
 import { useStore, useCurrentUser } from "@/lib/store";
+import { SAMPLE_PROJECT_NAME } from "@/lib/data/sample-loader";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle, KpiCard } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,11 +39,14 @@ export default function PortfolioPage() {
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
+      // Örnek proje her zaman en başta sabit
+      if (a.project.name === SAMPLE_PROJECT_NAME) return -1;
+      if (b.project.name === SAMPLE_PROJECT_NAME) return 1;
       if (sortBy === "name") return a.project.name.localeCompare(b.project.name);
       if (sortBy === "spi") {
         const aSpi = a.spi ?? 1;
         const bSpi = b.spi ?? 1;
-        return aSpi - bSpi; // en kritik (düşük SPI) en üstte
+        return aSpi - bSpi;
       }
       return a.realPct - b.realPct;
     });
@@ -113,23 +117,28 @@ export default function PortfolioPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sortedRows.map((r) => {
           const lvl = spiLevel(r.spi);
+          const isSample = r.project.name === SAMPLE_PROJECT_NAME;
           return (
             <Link
               key={r.project.id}
               href="/dashboard"
               onClick={() => setCurrentProject(r.project.id)}
               className={cn(
-                "block rounded-xl p-5 border transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
-                "bg-gradient-to-br from-bg3/90 to-bg2/90 border-border2/80",
-                lvl === "bad" && "border-red/40 hover:border-red/60",
-                lvl === "warn" && "border-yellow/30 hover:border-yellow/50",
-                lvl === "good" && "border-green/30 hover:border-green/50"
+                "block rounded-2xl p-5 border bg-white shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-medium",
+                lvl === "bad" && "border-red/30",
+                lvl === "warn" && "border-yellow/30",
+                lvl === "good" && "border-green/30",
+                !lvl && "border-border",
+                isSample && "ring-2 ring-accent/15 bg-gradient-to-br from-accent/5 to-white"
               )}
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="min-w-0">
-                  <div className="font-display font-bold text-base text-text truncate">
-                    {r.project.name}
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-display font-bold text-base text-text truncate">
+                      {r.project.name}
+                    </div>
+                    {isSample && <Badge variant="accent">📌 Örnek</Badge>}
                   </div>
                   <div className="flex items-center gap-1 text-[11px] text-text3 mt-0.5">
                     <MapPin size={11} />
