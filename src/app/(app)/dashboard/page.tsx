@@ -53,6 +53,7 @@ import { HeadcountBar } from "@/components/charts/headcount-bar";
 import { TrendLine } from "@/components/charts/trend-line";
 import { BillingDetailWidget } from "@/components/dashboard/billing-detail";
 import { ManhourDetailWidget } from "@/components/dashboard/manhour-detail";
+import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import {
   formatDate,
   daysBetween,
@@ -164,13 +165,23 @@ export default function DashboardPage() {
     today
   );
 
-  // 15-Gün kritik işler
+  // 15-Gün kritik işler (eski) — sıralı
   const fifteen = toISODate(addDays(today, 15));
   const lookahead15 = lookahead
     .filter((l) => l.projectId === projectId && !l.done && l.date <= fifteen)
     .sort((a, b) => a.date.localeCompare(b.date));
   const openActions = lookahead.filter((l) => l.projectId === projectId && !l.done);
   const criticalOpen = openActions.filter((l) => l.priority === "critical").length;
+  void lookahead15; // legacy kullanım
+
+  // Kritik İşler (sadece kind=kritik_is)
+  const kritikIs = openActions
+    .filter((l) => (l.kind ?? "kritik_is") === "kritik_is")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // Claim & Tutanak konuları (kritik_is hariç)
+  const claimTutanak = openActions
+    .filter((l) => (l.kind ?? "kritik_is") !== "kritik_is")
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   // Son 5 gün faaliyet
   const fiveDaysAgo = toISODate(addDays(today, -4));
@@ -442,51 +453,46 @@ export default function DashboardPage() {
               İmalat Bölüm Özeti
             </CardTitle>
           </div>
-          <div className="p-4 space-y-3">
+          <div className="max-h-[260px] overflow-y-auto">
             {stats.sections.map((sec) => {
               const spiL = spiLevel(sec.spi);
               const planP = sec.planPct * 100;
               const realP = sec.realPct * 100;
               return (
-                <div key={sec.code} className="rounded-lg border border-border bg-white p-3 hover:bg-bg2/40 transition-colors">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="font-mono text-[10px] text-text3 font-bold">{sec.code}</span>
-                        {sec.spi != null && (
-                          <Badge variant={spiL === "good" ? "green" : spiL === "warn" ? "yellow" : "red"}>
-                            SPI {sec.spi.toFixed(2)}
-                          </Badge>
+                <div
+                  key={sec.code}
+                  className="px-3 py-2 border-b border-border last:border-b-0 hover:bg-bg2/40 transition-colors"
+                >
+                  {/* Üst satır: kod + ad + SPI */}
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="font-mono text-[10px] text-text3 shrink-0">{sec.code}</span>
+                    <span className="text-[11px] font-semibold text-text truncate flex-1">{sec.name}</span>
+                    {sec.spi != null && (
+                      <span
+                        className={cn(
+                          "font-mono text-[10px] font-bold tabular-nums shrink-0",
+                          spiL === "good" ? "text-green" : spiL === "warn" ? "text-yellow" : "text-red"
                         )}
-                      </div>
-                      <div className="text-sm font-semibold text-text leading-tight">{sec.name}</div>
-                    </div>
+                      >
+                        {sec.spi.toFixed(2)}
+                      </span>
+                    )}
                   </div>
-                  {/* Plan / Gerçek metrikleri */}
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div className="rounded-md bg-blue/5 border border-blue/15 px-2 py-1.5">
-                      <div className="text-[9px] uppercase tracking-wider font-bold text-text3 leading-tight">Plan</div>
-                      <div className="font-mono font-bold text-planned text-sm leading-tight tabular-nums">
-                        {planP.toFixed(1)}%
-                      </div>
-                    </div>
-                    <div className="rounded-md bg-green/5 border border-green/15 px-2 py-1.5">
-                      <div className="text-[9px] uppercase tracking-wider font-bold text-text3 leading-tight">Gerçek</div>
-                      <div className="font-mono font-bold text-realized text-sm leading-tight tabular-nums">
-                        {realP.toFixed(1)}%
-                      </div>
-                    </div>
-                  </div>
-                  {/* Çift katmanlı bar */}
-                  <div className="relative h-2 bg-bg3 rounded-full overflow-hidden">
+                  {/* Bar */}
+                  <div className="relative h-1.5 bg-bg3 rounded-full overflow-hidden mb-0.5">
                     <div
-                      className="absolute h-full bg-planned/40 rounded-full transition-[width] duration-500"
+                      className="absolute h-full bg-planned/40 rounded-full"
                       style={{ width: `${planP}%` }}
                     />
                     <div
-                      className="absolute h-full bg-realized rounded-full transition-[width] duration-500"
+                      className="absolute h-full bg-realized rounded-full"
                       style={{ width: `${realP}%` }}
                     />
+                  </div>
+                  {/* Alt etiketler */}
+                  <div className="flex justify-between text-[9px] font-mono tabular-nums">
+                    <span className="text-planned">P {planP.toFixed(0)}%</span>
+                    <span className="text-realized">G {realP.toFixed(0)}%</span>
                   </div>
                 </div>
               );
@@ -498,33 +504,24 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* ADAM-SAAT DETAY — collapsible */}
-      <CollapsibleSection title="Adam-Saat Analiz Tablosu" icon={<Clock size={14} className="text-accent" />}>
+      {/* ADAM-SAAT */}
+      <div className="mb-6 animate-slide-up">
         <ManhourDetailWidget />
-      </CollapsibleSection>
+      </div>
 
-      {/* FATURALANDIRMA DETAY — collapsible */}
-      <CollapsibleSection title="Faturalandırma Durumu" icon={<Receipt size={14} className="text-accent" />}>
+      {/* FATURALANDIRMA */}
+      <div className="mb-6 animate-slide-up">
         <BillingDetailWidget />
-      </CollapsibleSection>
+      </div>
 
-      {/* PROCUREMENT + LOOKAHEAD-15 — collapsible */}
-      <CollapsibleSection
-        title="Procurement Follow Up & Kritik · Tutanak · Claim"
-        icon={<ShoppingCart size={14} className="text-accent" />}
-      >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-slide-up">
-        <Card className="!p-0 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-            <CardTitle className="mb-0">
-              <ShoppingCart size={14} className="text-accent" />
-              Procurement Follow Up
-              <Badge variant="gray" className="ml-1">{procFollow.length}</Badge>
-            </CardTitle>
-            <Link href="/procurement" className="text-[11px] text-accent font-bold hover:underline">
-              Detay →
-            </Link>
-          </div>
+      {/* PROCUREMENT + KRİTİK İŞLER + CLAIM&TUTANAK */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
+        <CollapsibleCard
+          title="Procurement Follow Up"
+          icon={<ShoppingCart size={14} className="text-accent" />}
+          link={{ href: "/procurement", label: "Detay →" }}
+          badge={<Badge variant="gray">{procFollow.length}</Badge>}
+        >
           {procFollow.length === 0 ? (
             <p className="text-xs text-text3 py-6 text-center">Yaklaşan veya kritik malzeme yok.</p>
           ) : (
@@ -592,39 +589,30 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </Card>
+        </CollapsibleCard>
 
-        <Card className="!p-0 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-            <CardTitle className="mb-0">
-              <Telescope size={14} className="text-accent" />
-              Kritik & Tutanak
-              <Badge variant="gray" className="ml-1">{lookahead15.length}</Badge>
-            </CardTitle>
-            <Link href="/lookahead" className="text-[11px] text-accent font-bold hover:underline">
-              Detay →
-            </Link>
-          </div>
-          {lookahead15.length === 0 ? (
-            <p className="text-xs text-text3 py-6 text-center">15 gün içinde aksiyon yok.</p>
+        <CollapsibleCard
+          title="Kritik İşler"
+          icon={<Telescope size={14} className="text-red" />}
+          link={{ href: "/lookahead", label: "Detay →" }}
+          badge={<Badge variant="red">{kritikIs.length}</Badge>}
+        >
+          {kritikIs.length === 0 ? (
+            <p className="text-xs text-text3 py-6 text-center">Açık kritik iş yok.</p>
           ) : (
             <div className="max-h-[420px] overflow-y-auto">
               <table className="w-full text-xs">
                 <tbody>
-                  {lookahead15.slice(0, 14).map((l) => {
+                  {kritikIs.slice(0, 14).map((l) => {
                     const days = daysBetween(today, l.date);
                     const overdue = days < 0;
-                    const kind = l.kind ?? "kritik_is";
                     return (
                       <tr key={l.id} className={cn("border-b border-border last:border-b-0 hover:bg-bg2/40", overdue && "bg-red/3")}>
-                        <td className="px-2 py-1.5 align-middle w-[5.5rem]">
-                          <KindPill kind={kind} />
-                        </td>
-                        <td className="px-2 py-1.5 align-middle">
-                          <div className="font-medium text-text leading-tight truncate max-w-[16rem]">{l.task}</div>
+                        <td className="px-3 py-2 align-middle">
+                          <div className="font-medium text-text leading-tight truncate max-w-[18rem]">{l.task}</div>
                           {l.owner && <div className="text-[10px] text-text3 leading-tight">{l.owner}</div>}
                         </td>
-                        <td className="px-2 py-1.5 align-middle text-right whitespace-nowrap">
+                        <td className="px-2 py-2 align-middle text-right whitespace-nowrap">
                           <div className={cn("text-[10px] font-mono font-bold tabular-nums", overdue ? "text-red" : "text-text3")}>
                             {formatDate(l.date).slice(0, 5)}
                           </div>
@@ -643,69 +631,60 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </Card>
-      </div>
-      </CollapsibleSection>
+        </CollapsibleCard>
 
-      {/* AÇIK AKSİYONLAR + SON 5 GÜN FAALİYET ÖZETİ — collapsible */}
-      <CollapsibleSection
-        title="Açık Aksiyonlar & Son 5 Gün Faaliyet"
-        icon={<AlertTriangle size={14} className="text-yellow" />}
-      >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-slide-up">
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <CardTitle className="mb-0">
-              <AlertTriangle size={14} className="text-yellow" />
-              Açık Aksiyonlar ({openActions.length})
-            </CardTitle>
-            <Link href="/lookahead" className="text-[11px] text-accent font-bold hover:underline">
-              Tümü →
-            </Link>
-          </div>
-          {openActions.length === 0 ? (
-            <p className="text-sm text-text3 py-4 text-center">Tüm aksiyonlar kapalı 🎉</p>
+        <CollapsibleCard
+          title="Claim & Tutanak Konuları"
+          icon={<FileText size={14} className="text-purple" />}
+          link={{ href: "/lookahead", label: "Detay →" }}
+          badge={<Badge variant="purple">{claimTutanak.length}</Badge>}
+        >
+          {claimTutanak.length === 0 ? (
+            <p className="text-xs text-text3 py-6 text-center">Aktif claim/tutanak yok.</p>
           ) : (
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
-              {openActions.slice(0, 10).map((l) => (
-                <div key={l.id} className="flex items-center gap-2 py-1.5 px-2 hover:bg-bg2 rounded">
-                  <Badge
-                    variant={
-                      l.priority === "critical"
-                        ? "red"
-                        : l.priority === "high"
-                        ? "yellow"
-                        : l.priority === "medium"
-                        ? "blue"
-                        : "gray"
-                    }
-                  >
-                    {l.priority.charAt(0).toUpperCase()}
-                  </Badge>
-                  <span className="text-sm flex-1 truncate">{l.task}</span>
-                  <span className="text-[11px] text-text3 font-mono whitespace-nowrap">
-                    {formatDate(l.date)}
-                  </span>
-                </div>
-              ))}
+            <div className="max-h-[420px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <tbody>
+                  {claimTutanak.slice(0, 14).map((l) => {
+                    const days = daysBetween(today, l.date);
+                    const overdue = days < 0;
+                    const kind = l.kind ?? "tutanak";
+                    return (
+                      <tr key={l.id} className={cn("border-b border-border last:border-b-0 hover:bg-bg2/40", overdue && "bg-red/3")}>
+                        <td className="px-2 py-1.5 align-middle w-[5.5rem]">
+                          <KindPill kind={kind} />
+                        </td>
+                        <td className="px-2 py-1.5 align-middle">
+                          <div className="font-medium text-text leading-tight truncate max-w-[14rem]">{l.task}</div>
+                          {l.owner && <div className="text-[10px] text-text3 leading-tight">{l.owner}</div>}
+                        </td>
+                        <td className="px-2 py-1.5 align-middle text-right whitespace-nowrap">
+                          <div className={cn("text-[10px] font-mono font-bold tabular-nums", overdue ? "text-red" : "text-text3")}>
+                            {formatDate(l.date).slice(0, 5)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-        </Card>
+        </CollapsibleCard>
+      </div>
 
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <CardTitle className="mb-0">
-              <FileText size={14} className="text-accent" />
-              Son 5 Günün Faaliyet Özeti
-            </CardTitle>
-            <Link href="/realization" className="text-[11px] text-accent font-bold hover:underline">
-              Tümü →
-            </Link>
-          </div>
+      {/* SON 5 GÜN FAALİYET ÖZETİ */}
+      <div className="mb-6 animate-slide-up">
+        <CollapsibleCard
+          title="Son 5 Günün Faaliyet Özeti"
+          icon={<FileText size={14} className="text-accent" />}
+          link={{ href: "/realization", label: "Tümü →" }}
+          badge={<Badge variant="gray">{recentRealizations.length}</Badge>}
+        >
           {recentRealizations.length === 0 ? (
-            <p className="text-sm text-text3 py-4 text-center">Son 5 günde gerçekleşme kaydı yok.</p>
+            <p className="text-sm text-text3 py-6 text-center">Son 5 günde gerçekleşme kaydı yok.</p>
           ) : (
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            <div className="max-h-72 overflow-y-auto p-3 space-y-1.5">
               {recentRealizations.slice(0, 12).map((r, i) => (
                 <div key={i} className="flex items-center gap-2 py-1.5 px-2 hover:bg-bg2 rounded text-sm">
                   <span className="text-[10px] font-mono text-text3 w-14 shrink-0">{formatDate(r.date).slice(0, 5)}</span>
@@ -718,109 +697,77 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </Card>
+        </CollapsibleCard>
       </div>
-      </CollapsibleSection>
 
-      {/* DRONE FOTO + PROJE KÜNYESİ — collapsible */}
-      <CollapsibleSection title="Saha Fotoğrafı & Proje Künyesi" icon={<Camera size={14} className="text-accent" />}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-slide-up">
-        <Card className="lg:col-span-2 !p-0 overflow-hidden">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <CardTitle className="mb-0">
-              <Camera size={14} className="text-accent" />
-              Saha Fotoğrafı
-              {latestReport && (
-                <span className="text-text3 font-normal tracking-normal text-xs ml-2">
-                  · {formatDate(latestReport.reportDate)}
-                </span>
-              )}
-            </CardTitle>
-            <Link href="/daily-report" className="text-[11px] text-accent font-bold hover:underline">
-              Günlük rapor →
-            </Link>
-          </div>
-          {dronePhoto ? (
-            <div className="relative aspect-video bg-bg2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={dronePhoto.url}
-                alt={dronePhoto.caption || "Saha fotoğrafı"}
-                className="w-full h-full object-cover"
-              />
-              {latestReport?.summary && (
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-900/85 to-transparent p-4">
-                  <p className="text-sm text-white font-medium line-clamp-2">{latestReport.summary}</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="aspect-video flex flex-col items-center justify-center text-text3 gap-2 bg-bg-soft">
-              <Camera size={36} className="opacity-50" />
-              <span className="text-sm">Henüz fotoğraf yok</span>
-              <Link href="/daily-report" className="text-xs text-accent font-semibold hover:underline">
-                Günlük rapor ekle →
-              </Link>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardTitle>
-            <Building2 size={14} className="text-accent" />
-            Proje Künyesi
-          </CardTitle>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-            <InfoItem label="Başlangıç" value={formatDate(project.startDate)} />
-            <InfoItem label="Bitiş" value={formatDate(project.plannedEnd)} />
-            <InfoItem label="Sözleşme" value={formatDate(project.contractEnd)} />
-            <InfoItem label="Süre" value={`${project.durationDays}g`} />
-            <InfoItem label="Konum" value={project.location} />
-            <InfoItem
-              label="Kurulu Güç"
-              value={project.installedCapacityMw ? `${project.installedCapacityMw} MW` : "—"}
-            />
-            <InfoItem
-              label="Bütçe"
-              value={project.totalBudget ? formatMoney(project.totalBudget, project.budgetCurrency, 0) : "—"}
-            />
-            <InfoItem label="Durum" value={<span className="capitalize">{project.status}</span>} />
-          </dl>
-        </Card>
-      </div>
-      </CollapsibleSection>
-    </>
-  );
-}
-
-function CollapsibleSection({
-  title,
-  icon,
-  defaultOpen = true,
-  children,
-}: {
-  title: string;
-  icon?: React.ReactNode;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details
-      open={defaultOpen}
-      className="group mb-6 animate-slide-up"
-    >
-      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <div className="flex items-center gap-3 px-5 py-3 bg-white border border-border rounded-xl hover:border-text3 transition-colors shadow-soft">
-          {icon}
-          <span className="font-display font-bold text-sm text-text tracking-tight">{title}</span>
-          <ChevronDown
-            size={16}
-            className="ml-auto text-text3 transition-transform group-open:rotate-180"
-          />
+      {/* DRONE FOTO + PROJE KÜNYESİ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
+        <div className="lg:col-span-2">
+          <CollapsibleCard
+            title={
+              <>
+                Saha Fotoğrafı
+                {latestReport && (
+                  <span className="text-text3 font-normal tracking-normal text-xs ml-2">
+                    · {formatDate(latestReport.reportDate)}
+                  </span>
+                )}
+              </>
+            }
+            icon={<Camera size={14} className="text-accent" />}
+            link={{ href: "/daily-report", label: "Günlük rapor →" }}
+          >
+            {dronePhoto ? (
+              <div className="relative aspect-video bg-bg2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={dronePhoto.url}
+                  alt={dronePhoto.caption || "Saha fotoğrafı"}
+                  className="w-full h-full object-cover"
+                />
+                {latestReport?.summary && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-900/85 to-transparent p-4">
+                    <p className="text-sm text-white font-medium line-clamp-2">{latestReport.summary}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="aspect-video flex flex-col items-center justify-center text-text3 gap-2 bg-bg-soft">
+                <Camera size={36} className="opacity-50" />
+                <span className="text-sm">Henüz fotoğraf yok</span>
+                <Link href="/daily-report" className="text-xs text-accent font-semibold hover:underline">
+                  Günlük rapor ekle →
+                </Link>
+              </div>
+            )}
+          </CollapsibleCard>
         </div>
-      </summary>
-      <div className="mt-3">{children}</div>
-    </details>
+
+        <CollapsibleCard
+          title="Proje Künyesi"
+          icon={<Building2 size={14} className="text-accent" />}
+        >
+          <div className="p-5">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              <InfoItem label="Başlangıç" value={formatDate(project.startDate)} />
+              <InfoItem label="Bitiş" value={formatDate(project.plannedEnd)} />
+              <InfoItem label="Sözleşme" value={formatDate(project.contractEnd)} />
+              <InfoItem label="Süre" value={`${project.durationDays}g`} />
+              <InfoItem label="Konum" value={project.location} />
+              <InfoItem
+                label="Kurulu Güç"
+                value={project.installedCapacityMw ? `${project.installedCapacityMw} MW` : "—"}
+              />
+              <InfoItem
+                label="Bütçe"
+                value={project.totalBudget ? formatMoney(project.totalBudget, project.budgetCurrency, 0) : "—"}
+              />
+              <InfoItem label="Durum" value={<span className="capitalize">{project.status}</span>} />
+            </dl>
+          </div>
+        </CollapsibleCard>
+      </div>
+    </>
   );
 }
 

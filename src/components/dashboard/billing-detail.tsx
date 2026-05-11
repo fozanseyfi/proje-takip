@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useMemo } from "react";
 import { Receipt, Users2, ChevronDown } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { formatDate, formatMoney, cn } from "@/lib/utils";
 import type { BillingItem, Subcontractor } from "@/lib/store/types";
 
@@ -48,17 +47,11 @@ export function BillingDetailWidget() {
   const ownerPaidPct = contractAmount > 0 ? (ownerPaidTotal / contractAmount) * 100 : 0;
 
   return (
-    <Card className="!p-0 overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-        <CardTitle className="mb-0">
-          <Receipt size={14} className="text-accent" />
-          Faturalandırma Durumu
-        </CardTitle>
-        <Link href="/billing" className="text-[11px] text-accent font-bold hover:underline">
-          Detay →
-        </Link>
-      </div>
-
+    <CollapsibleCard
+      title="Faturalandırma Durumu"
+      icon={<Receipt size={14} className="text-accent" />}
+      link={{ href: "/billing", label: "Detay →" }}
+    >
       <div className="px-5 py-4">
         {/* ÖZET METRİKLER — kompakt 3'lü */}
         <div className="grid grid-cols-3 gap-3 mb-3">
@@ -122,7 +115,7 @@ export function BillingDetailWidget() {
           </details>
         )}
       </div>
-    </Card>
+    </CollapsibleCard>
   );
 }
 

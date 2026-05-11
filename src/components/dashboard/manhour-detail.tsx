@@ -3,9 +3,9 @@
 import { useMemo, useState } from "react";
 import { Clock, Building2 } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { manhourByDiscipline, getDisciplineLabel } from "@/lib/calc/sections";
 import { formatNumber, toISODate, addDays, cn } from "@/lib/utils";
 
@@ -74,35 +74,32 @@ export function ManhourDetailWidget() {
   }
 
   return (
-    <Card className="!p-0 overflow-hidden">
-      <div className="px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-        <CardTitle className="mb-0">
-          <Clock size={14} className="text-accent" />
-          Adam-Saat Analiz Tablosu
-        </CardTitle>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-text3 font-semibold uppercase tracking-wider text-[10px]">Aralık:</span>
-          <Input
-            type="date"
-            value={draftFrom}
-            onChange={(e) => setDraftFrom(e.target.value)}
-            className="!h-8 !w-36 !py-0 text-xs font-mono"
-            min={project.startDate}
-            max={project.plannedEnd}
-          />
-          <span className="text-text3">→</span>
-          <Input
-            type="date"
-            value={draftTo}
-            onChange={(e) => setDraftTo(e.target.value)}
-            className="!h-8 !w-36 !py-0 text-xs font-mono"
-            min={project.startDate}
-            max={project.plannedEnd}
-          />
-          <Button size="sm" variant="accent" onClick={applyDates}>
-            Göster
-          </Button>
-        </div>
+    <CollapsibleCard
+      title="Adam-Saat Analiz Tablosu"
+      icon={<Clock size={14} className="text-accent" />}
+    >
+      <div className="px-6 py-3 border-b border-border bg-bg2/30 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-text3 font-semibold uppercase tracking-wider text-[10px]">Aralık:</span>
+        <Input
+          type="date"
+          value={draftFrom}
+          onChange={(e) => setDraftFrom(e.target.value)}
+          className="!h-8 !w-36 !py-0 text-xs font-mono"
+          min={project.startDate}
+          max={project.plannedEnd}
+        />
+        <span className="text-text3">→</span>
+        <Input
+          type="date"
+          value={draftTo}
+          onChange={(e) => setDraftTo(e.target.value)}
+          className="!h-8 !w-36 !py-0 text-xs font-mono"
+          min={project.startDate}
+          max={project.plannedEnd}
+        />
+        <Button size="sm" variant="accent" onClick={applyDates}>
+          Göster
+        </Button>
       </div>
 
       <div className="px-6 py-5">
@@ -232,6 +229,6 @@ export function ManhourDetailWidget() {
           </>
         )}
       </div>
-    </Card>
+    </CollapsibleCard>
   );
 }
