@@ -317,11 +317,11 @@ export default function TimelinePage() {
           <div className="overflow-auto max-h-[calc(100vh-280px)]" ref={exportRef}>
             <div className="bg-white" style={{ minWidth: `${minTableWidth}px` }}>
               {/* Header */}
-              <div className="grid grid-cols-[320px_1fr] gap-3 border-b-2 border-border bg-bg2 px-4 py-3 sticky top-0 z-20 shadow-soft">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-text2">
+              <div className="grid grid-cols-[320px_1fr] gap-3 border-b-2 border-border bg-bg2 sticky top-0 z-20 shadow-soft">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-text2 sticky left-0 z-30 bg-bg2 px-4 py-3 border-r border-border">
                   İş Kalemi / Başlık
                 </div>
-                <div className="relative h-7">
+                <div className="relative h-7 my-3">
                   {ticks.map((t) => (
                     <div
                       key={t.date}
@@ -338,19 +338,27 @@ export default function TimelinePage() {
               </div>
 
               {/* Rows */}
-              <div className="px-4 py-2">
+              <div>
                 {rows.map((r) => {
                   const c = LEVEL_COLOR[r.w.level] || LEVEL_COLOR[3];
                   const indent = (r.w.level - 1) * 14;
+                  // Solid bg for sticky-left cell — Tailwind class'larından bağımsız (sticky için opak şart)
+                  const stickyBgColor =
+                    r.w.level === 1 ? "#eff6ff" : r.w.level === 2 ? "#faf5ff" : "#ffffff";
                   return (
                     <div
                       key={r.w.id}
                       className={cn(
-                        "grid grid-cols-[320px_1fr] gap-3 items-center group hover:bg-bg2/40 rounded py-1.5 transition-colors",
-                        c.rowBg
+                        "grid grid-cols-[320px_1fr] gap-3 items-center group hover:bg-bg2/40 transition-colors border-b border-border last:border-b-0"
                       )}
                     >
-                      <div className="text-xs pr-2 truncate flex items-center gap-2" style={{ paddingLeft: `${indent}px` }}>
+                      <div
+                        className="text-xs truncate flex items-center gap-2 py-2 px-4 sticky left-0 z-10 border-r border-border group-hover:bg-bg2"
+                        style={{
+                          paddingLeft: `${indent + 16}px`,
+                          backgroundColor: stickyBgColor,
+                        }}
+                      >
                         <span
                           className={cn(
                             "text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shrink-0",
