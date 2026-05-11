@@ -23,6 +23,8 @@ import { Alert } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/toast";
 import { computeProgress } from "@/lib/calc/progress";
 import { formatNumber, formatDate, toISODate, addDays, daysBetween, cn } from "@/lib/utils";
+import { PlanRealList } from "@/components/wbs/plan-real-list";
+import { ListChecks } from "lucide-react";
 
 const MONTH_NAMES_TR = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -321,16 +323,16 @@ export default function PlanningPage() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="sticky top-0 left-0 z-30 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border w-20 min-w-[5rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border w-20 min-w-[5rem] border-r" style={{ left: 0 }}>
                   WBS
                 </th>
-                <th className="sticky top-0 left-20 z-30 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[14rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[14rem]" style={{ left: 80 }}>
                   Açıklama
                 </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[5rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[5rem]" style={{ left: 304 }}>
                   Toplam
                 </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[3.5rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[3.5rem] border-r-2 border-r-border2" style={{ left: 384 }}>
                   Birim
                 </th>
                 {dayHeaders.map(({ date, day }) => {
@@ -352,10 +354,10 @@ export default function PlanningPage() {
                     </th>
                   );
                 })}
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[6rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[6rem] border-l-2 border-l-border2" style={{ right: 96 }}>
                   Bu Ay
                 </th>
-                <th className="sticky top-0 z-20 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[6rem]">
+                <th className="sticky top-0 z-30 bg-bg2 px-3 py-2 text-right text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[6rem]" style={{ right: 0 }}>
                   Kümülatif %
                 </th>
               </tr>
@@ -366,19 +368,19 @@ export default function PlanningPage() {
                 const monthSum = selectedMonth ? monthTotalForLeaf(w.code, selectedMonth) : 0;
                 const cumPct = w.quantity > 0 ? (totalDraft / w.quantity) * 100 : 0;
                 return (
-                  <tr key={w.id} className="hover:bg-bg2/50">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 border-b border-border font-mono text-xs text-text3 w-20 min-w-[5rem]">
+                  <tr key={w.id} className="group hover:bg-bg2/50">
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border font-mono text-xs text-text3 w-20 min-w-[5rem]" style={{ left: 0 }}>
                       {w.code}
                     </td>
-                    <td className="sticky left-20 z-10 bg-white px-3 py-2 border-b border-border min-w-[14rem]">
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border min-w-[14rem]" style={{ left: 80 }}>
                       <div className="text-xs text-text font-medium truncate max-w-[20rem]" title={w.name}>
                         {w.name}
                       </div>
                     </td>
-                    <td className="px-3 py-2 border-b border-border text-right font-mono text-xs text-text2 tabular-nums">
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border text-right font-mono text-xs text-text2 tabular-nums min-w-[5rem]" style={{ left: 304 }}>
                       {formatNumber(w.quantity, 0)}
                     </td>
-                    <td className="px-3 py-2 border-b border-border text-xs text-text3">
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border text-xs text-text3 border-r-2 border-r-border2 min-w-[3.5rem]" style={{ left: 384 }}>
                       {w.unit}
                     </td>
                     {dayHeaders.map(({ date }) => {
@@ -401,7 +403,7 @@ export default function PlanningPage() {
                             disabled={!inProject}
                             onChange={(e) => setDraftValue(w.code, date, e.target.value)}
                             className={cn(
-                              "w-full px-1 py-1 bg-transparent text-center text-[11px] font-mono tabular-nums rounded",
+                              "w-full px-0.5 py-1 bg-transparent text-center text-[11px] font-mono tabular-nums rounded leading-tight",
                               "focus:outline-none focus:bg-white focus:ring-2 focus:ring-accent/30 focus:shadow-focus",
                               !inProject && "text-text3 cursor-not-allowed",
                               value && "bg-blue/5 text-planned font-semibold"
@@ -411,20 +413,18 @@ export default function PlanningPage() {
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2 border-b border-border text-right font-mono font-semibold text-text tabular-nums text-xs">
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border text-right font-mono font-semibold text-text tabular-nums text-xs border-l-2 border-l-border2 min-w-[6rem]" style={{ right: 96 }}>
                       {formatNumber(monthSum, 2)}
                     </td>
-                    <td className="px-3 py-2 border-b border-border text-right">
-                      <div className="flex items-center gap-2 justify-end">
-                        <span
-                          className={cn(
-                            "font-mono text-xs tabular-nums font-semibold",
-                            cumPct >= 99 ? "text-green" : cumPct < 1 ? "text-text3" : "text-text"
-                          )}
-                        >
-                          {cumPct.toFixed(1)}%
-                        </span>
-                      </div>
+                    <td className="sticky z-20 bg-white group-hover:bg-bg2/50 px-3 py-2 border-b border-border text-right min-w-[6rem]" style={{ right: 0 }}>
+                      <span
+                        className={cn(
+                          "font-mono text-xs tabular-nums font-semibold",
+                          cumPct >= 99 ? "text-green" : cumPct < 1 ? "text-text3" : "text-text"
+                        )}
+                      >
+                        {cumPct.toFixed(1)}%
+                      </span>
                     </td>
                   </tr>
                 );
@@ -440,6 +440,15 @@ export default function PlanningPage() {
           </table>
         </div>
       </Card>
+
+      {/* Alt: Plan Görüntüleme Listesi (salt okunur) */}
+      <PlanRealList
+        title="Planlanan İşler — Gözlem Listesi"
+        icon={<ListChecks size={14} className="text-planned" />}
+        variant="planned"
+        wbs={wbs}
+        data={planned}
+      />
 
       <AutoDistributeDialog
         open={autoOpen}

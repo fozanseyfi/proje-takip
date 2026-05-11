@@ -168,32 +168,149 @@ function CreateDialog({
   onClose: () => void;
   onSubmit: (data: { task: string; date: string; priority: Priority; owner?: string; notes?: string }) => void;
 }) {
+  const personnel = useStore((s) => s.personnelMaster).filter((p) => !p.deletedAt);
+  const addPersonnel = useStore((s) => s.addPersonnel);
+  const currentUser = useStore((s) => s.users.find((u) => u.id === s.currentUserId));
+
   const [task, setTask] = useState("");
   const [date, setDate] = useState(toISODate(addDays(new Date(), 7)));
   const [priority, setPriority] = useState<Priority>("medium");
-  const [owner, setOwner] = useState("");
+  const [ownerId, setOwnerId] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  // Hızlı personel ekleme form state
+  const [qFirstName, setQFirstName] = useState("");
+  const [qLastName, setQLastName] = useState("");
+  const [qCompany, setQCompany] = useState("");
+  const [qJobTitle, setQJobTitle] = useState("");
+  const [qPhone, setQPhone] = useState("");
+  const [qDiscipline, setQDiscipline] = useState<"mekanik" | "elektrik" | "insaat" | "muhendislik" | "idari" | "diger">("muhendislik");
+
+  function quickAdd() {
+    if (!qFirstName || !qLastName || !qCompany || !currentUser) {
+      alert("Ad, soyad ve firma zorunlu");
+      return;
+    }
+    const p = addPersonnel({
+      ownerUserId: currentUser.id,
+      firstName: qFirstName,
+      lastName: qLastName,
+      company: qCompany,
+      jobTitle: qJobTitle || undefined,
+      phone: qPhone || undefined,
+      discipline: qDiscipline,
+      status: "active",
+    });
+    setOwnerId(p.id);
+    setShowQuickAdd(false);
+    setQFirstName("");
+    setQLastName("");
+    setQCompany("");
+    setQJobTitle("");
+    setQPhone("");
+  }
+
+  const selectedPerson = personnel.find((p) => p.id === ownerId);
+  const ownerName = selectedPerson ? `${selectedPerson.firstName} ${selectedPerson.lastName}` : undefined;
 
   return (
-    <Dialog open={open} onClose={onClose} title="Yeni Kritik İş" size="sm">
+    <Dialog open={open} onClose={onClose} title="Yeni Kritik İş" size="md">
       <div className="space-y-3">
         <Field label="İş Tanımı">
           <Input value={task} onChange={(e) => setTask(e.target.value)} placeholder="örn. Trafo teslimi" />
         </Field>
-        <Field label="Tarih">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tarih">
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label="Öncelik">
+            <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+              <option value="low">Düşük</option>
+              <option value="medium">Orta</option>
+              <option value="high">Yüksek</option>
+              <option value="critical">Kritik</option>
+            </Select>
+          </Field>
+        </div>
+
+        <Field label="Sorumlu Personel">
+          <div className="flex gap-2">
+            <Select
+              value={ownerId}
+              onChange={(e) => setOwnerId(e.target.value)}
+              className="flex-1"
+            >
+              <option value="">— Sorumlu seç —</option>
+              {personnel
+                .sort((a, b) =>
+                  `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`, "tr")
+                )
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.firstName} {p.lastName} — {p.company}
+                    {p.jobTitle ? ` (${p.jobTitle})` : ""}
+                  </option>
+                ))}
+            </Select>
+            <Button
+              variant="soft"
+              onClick={() => setShowQuickAdd(true)}
+              type="button"
+              title="Listede yoksa hızlıca ekle"
+            >
+              <Plus size={14} /> Ekle
+            </Button>
+          </div>
         </Field>
-        <Field label="Öncelik">
-          <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-            <option value="low">Düşük</option>
-            <option value="medium">Orta</option>
-            <option value="high">Yüksek</option>
-            <option value="critical">Kritik</option>
-          </Select>
-        </Field>
-        <Field label="Sorumlu">
-          <Input value={owner} onChange={(e) => setOwner(e.target.value)} />
-        </Field>
+
+        {showQuickAdd && (
+          <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-accent">Hızlı Personel Ekle</div>
+              <button
+                onClick={() => setShowQuickAdd(false)}
+                className="text-xs text-text3 hover:text-text"
+              >
+                İptal
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Ad *">
+                <Input value={qFirstName} onChange={(e) => setQFirstName(e.target.value)} />
+              </Field>
+              <Field label="Soyad *">
+                <Input value={qLastName} onChange={(e) => setQLastName(e.target.value)} />
+              </Field>
+              <Field label="Firma *">
+                <Input value={qCompany} onChange={(e) => setQCompany(e.target.value)} />
+              </Field>
+              <Field label="Disiplin">
+                <Select
+                  value={qDiscipline}
+                  onChange={(e) => setQDiscipline(e.target.value as typeof qDiscipline)}
+                >
+                  <option value="muhendislik">Mühendislik</option>
+                  <option value="elektrik">Elektrik</option>
+                  <option value="mekanik">Mekanik</option>
+                  <option value="insaat">İnşaat</option>
+                  <option value="idari">İdari</option>
+                  <option value="diger">Diğer</option>
+                </Select>
+              </Field>
+              <Field label="Görev">
+                <Input value={qJobTitle} onChange={(e) => setQJobTitle(e.target.value)} placeholder="Şantiye Şefi, ..." />
+              </Field>
+              <Field label="Telefon">
+                <Input value={qPhone} onChange={(e) => setQPhone(e.target.value)} placeholder="0532..." />
+              </Field>
+            </div>
+            <Button variant="accent" onClick={quickAdd} size="sm" className="w-full">
+              <Plus size={14} /> Personel Oluştur ve Sorumlu Yap
+            </Button>
+          </div>
+        )}
+
         <Field label="Notlar">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </Field>
@@ -207,7 +324,7 @@ function CreateDialog({
               task,
               date,
               priority,
-              owner: owner || undefined,
+              owner: ownerName,
               notes: notes || undefined,
             })
           }

@@ -149,6 +149,17 @@ input[type="number"] {
   font-feature-settings: "tnum";
 }
 
+/* Number input spinner (yukarı/aşağı oklar) gizle — daha temiz görünüm */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Save, ChevronLeft, ChevronRight, Copy } from "lucide-react";
+import { CheckCircle2, Save, ChevronLeft, ChevronRight, Copy, ListChecks } from "lucide-react";
 import {
   useStore,
   useCurrentProject,
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { sumByDateMap } from "@/lib/calc/progress";
 import { formatNumber, formatDate, toISODate, daysBetween, cn, spiLevel } from "@/lib/utils";
+import { PlanRealList } from "@/components/wbs/plan-real-list";
 
 export default function RealizationPage() {
   const project = useCurrentProject();
@@ -284,6 +285,15 @@ export default function RealizationPage() {
           </table>
         </div>
       </Card>
+
+      {/* Alt: Gerçekleşme Görüntüleme Listesi (salt okunur) */}
+      <PlanRealList
+        title="Gerçekleşmiş İşler — Gözlem Listesi"
+        icon={<ListChecks size={14} className="text-realized" />}
+        variant="realized"
+        wbs={wbs}
+        data={realized}
+      />
     </>
   );
 }
