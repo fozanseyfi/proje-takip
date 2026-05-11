@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   FolderTree,
   Plus,
@@ -109,6 +109,40 @@ export default function WbsPage() {
     return isVisible(w.code);
   });
 
+  // En yakın existing parent'ı bul (sample data'da bazı ara parent'lar
+  // eksik olabiliyor, yukarı çıkıp ilk var olanı bul)
+  function findClosestParent(code: string): WbsItem | undefined {
+    if (!code.includes(".")) return undefined;
+    let p = code.split(".").slice(0, -1).join(".");
+    while (p.length > 0) {
+      const f = allWbs.find((x) => x.code === p);
+      if (f) return f;
+      if (!p.includes(".")) return undefined;
+      p = p.split(".").slice(0, -1).join(".");
+    }
+    return undefined;
+  }
+
+  // Grup mantığı (sadece main/sub/items modunda)
+  const groups = useMemo(() => {
+    if (viewMode === "all") return null;
+    const map = new Map<string, { parent: WbsItem | null; children: WbsItem[]; rawSum: number }>();
+    for (const w of visible) {
+      const parent = findClosestParent(w.code) ?? null;
+      const key = parent?.code ?? "__root__";
+      if (!map.has(key)) map.set(key, { parent, children: [], rawSum: 0 });
+      const g = map.get(key)!;
+      g.children.push(w);
+      g.rawSum += w.weight || 0;
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const ac = a.parent?.code ?? "";
+      const bc = b.parent?.code ?? "";
+      return ac.localeCompare(bc, undefined, { numeric: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, viewMode, allWbs]);
+
   function toggleExpand(code: string) {
     setExpanded((s) => {
       const current = s[code];
@@ -139,6 +173,196 @@ export default function WbsPage() {
   function updateLeafWeight(id: string, raw: string) {
     const value = Math.max(0, Number(raw) || 0);
     updateWbs(id, { weight: value });
+  }
+
+  // ============= Row & Group renders =============
+  function renderRow(w: WbsItem) {
+    const hier = hierarchicalMap.get(w.code);
+    const localPct = hier ? hier.localPct * 100 : 0;
+    const finalPct = hier ? hier.finalPct * 100 : 0;
+    const hasChildren = (hier?.childCount ?? 0) > 0;
+    const isExpanded =
+      expanded[w.code] !== undefined
+        ? expanded[w.code]
+        : !w.code.includes(".");
+    const barWidth = w.level === 0 ? 100 : Math.max(0.5, finalPct);
+    const c = LEVEL_COLOR[w.level] || LEVEL_COLOR[3];
+    const borderColorClass =
+      w.level === 1 ? "border-blue/40" : w.level === 2 ? "border-purple/40" : "border-accent/40";
+
+    return (
+      <tr key={w.id} className="hover:bg-bg2/40 transition-colors">
+        {/* Kod / Ad */}
+        <td
+          className={cn(
+            "px-3 py-2.5 border-b border-border",
+            w.level === 1 && "font-semibold text-blue",
+            w.level === 2 && "font-semibold text-purple",
+            w.level === 3 && "text-text"
+          )}
+        >
+          <div className="flex items-center gap-1.5" style={{ paddingLeft: `${(w.level - 1) * 16}px` }}>
+            {hasChildren ? (
+              <button
+                onClick={() => toggleExpand(w.code)}
+                className="text-text3 hover:text-text shrink-0 w-4 h-4 flex items-center justify-center"
+              >
+                {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              </button>
+            ) : (
+              <span className="w-4 shrink-0" />
+            )}
+            <span className="font-mono text-xs shrink-0">{w.code}</span>
+            <span className="truncate">{w.name}</span>
+            {w.discipline && (
+              <Badge variant="gray" className="ml-1.5 shrink-0">
+                {w.discipline}
+              </Badge>
+            )}
+          </div>
+        </td>
+
+        <td className="px-3 py-2.5 border-b border-border">
+          <span className={cn("text-[10px] font-bold uppercase tracking-wider", c.text)}>
+            {LEVEL_LABEL[w.level]}
+          </span>
+        </td>
+
+        <td className="px-3 py-2.5 border-b border-border text-right font-mono text-xs tabular-nums">
+          {w.isLeaf && w.quantity > 0 ? formatNumber(w.quantity, 0) : ""}
+        </td>
+
+        <td className="px-3 py-2.5 border-b border-border text-xs text-text3">{w.unit}</td>
+
+        {/* Yerel Ağırlık */}
+        <td className="px-2 py-1.5 border-b border-border text-center">
+          <div className="relative inline-block">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={w.weight || ""}
+              onChange={(e) => updateLeafWeight(w.id, e.target.value)}
+              placeholder={localPct.toFixed(1)}
+              className={cn(
+                "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
+                "focus:outline-none focus:border-accent focus:shadow-focus",
+                (w.weight || 0) > 0 && [c.text, "border-2", borderColorClass, "font-semibold"]
+              )}
+            />
+            {!w.weight && (
+              <span className={cn("absolute -bottom-3.5 left-0 right-0 text-[9px] tabular-nums opacity-60", c.text)}>
+                auto {localPct.toFixed(1)}
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* Nihai Ağırlık · Dağılım */}
+        <td className="px-3 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <div className={cn("flex-1 h-3 rounded-full overflow-hidden", c.barBg)}>
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-500 shadow-[inset_0_-1px_0_rgba(0,0,0,0.05)]",
+                  c.bar
+                )}
+                style={{ width: `${Math.min(100, barWidth)}%` }}
+              />
+            </div>
+            <span className={cn("text-[10px] font-mono font-bold tabular-nums w-12 text-right", c.text)}>
+              {finalPct < 0.01 ? "<0.01" : finalPct.toFixed(2)}%
+            </span>
+          </div>
+        </td>
+
+        <td className="px-3 py-2.5 border-b border-border">
+          <div className="flex gap-1 justify-end">
+            <button
+              onClick={() => setEditing(w)}
+              className="p-1.5 rounded-lg text-text3 hover:bg-bg3 hover:text-accent transition-colors"
+              title="Düzenle"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              onClick={() => {
+                if (confirm(`"${w.name}" silinsin mi? (Çöp Kutusu'ndan geri yüklenebilir)`))
+                  softDeleteWbs(w.id);
+              }}
+              className="p-1.5 rounded-lg text-text3 hover:bg-bg3 hover:text-red transition-colors"
+              title="Sil"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  function renderGroupHeader(g: { parent: WbsItem | null; children: WbsItem[] }) {
+    const headerColor = g.parent
+      ? LEVEL_COLOR[g.parent.level]
+      : LEVEL_COLOR[0];
+    const title = g.parent ? `${g.parent.code} · ${g.parent.name}` : "Proje Kökü";
+    return (
+      <tr key={`hdr-${g.parent?.code ?? "root"}`} className="bg-gradient-to-r from-bg2 to-transparent">
+        <td colSpan={7} className="px-3 py-2.5 border-b border-border2">
+          <div className="flex items-center gap-3">
+            <span className={cn("w-1.5 h-5 rounded-full", headerColor.bar)} />
+            <span className={cn("text-xs font-bold uppercase tracking-wider", headerColor.text)}>
+              {g.parent ? LEVEL_LABEL[g.parent.level] : "Proje"}
+            </span>
+            <span className="text-text font-bold text-sm">{title}</span>
+            <span className="ml-auto text-[11px] text-text3 font-medium">
+              {g.children.length} alt kalem
+            </span>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  function renderGroupFooter(g: { parent: WbsItem | null; children: WbsItem[]; rawSum: number }) {
+    const isAuto = g.rawSum === 0;
+    const isBalanced = !isAuto && Math.abs(g.rawSum - 100) < 0.5;
+    let bgClass = "bg-bg2/30";
+    let textClass = "text-text3";
+    let icon = null;
+    let message = "Otomatik eşit dağıtım";
+    if (!isAuto) {
+      if (isBalanced) {
+        bgClass = "bg-green/5";
+        textClass = "text-green";
+        icon = <CheckCircle2 size={13} className="text-green" />;
+        message = "Σ = 100 ✓ Doğru";
+      } else {
+        bgClass = "bg-yellow/5";
+        textClass = "text-yellow";
+        icon = <AlertTriangle size={13} className="text-yellow" />;
+        const diff = g.rawSum - 100;
+        message = `Σ = ${g.rawSum.toFixed(1)} · ${diff > 0 ? "+" : ""}${diff.toFixed(1)} fark`;
+      }
+    }
+    return (
+      <tr key={`ftr-${g.parent?.code ?? "root"}`} className={bgClass}>
+        <td colSpan={4} className="px-3 py-2 border-b-2 border-border2 text-right text-xs font-bold text-text2">
+          {g.parent ? `${g.parent.code} altında toplam:` : "Proje altında toplam:"}
+        </td>
+        <td className="px-3 py-2 border-b-2 border-border2 text-center">
+          <span className={cn("font-mono text-sm font-bold tabular-nums", textClass)}>
+            {g.rawSum.toFixed(1)}
+          </span>
+        </td>
+        <td colSpan={2} className="px-3 py-2 border-b-2 border-border2">
+          <div className="flex items-center gap-1.5">
+            {icon}
+            <span className={cn("text-xs font-semibold", textClass)}>{message}</span>
+          </div>
+        </td>
+      </tr>
+    );
   }
 
   if (!project) {
@@ -321,143 +545,18 @@ export default function WbsPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((w) => {
-                const hier = hierarchicalMap.get(w.code);
-                const localPct = hier ? hier.localPct * 100 : 0;
-                const finalPct = hier ? hier.finalPct * 100 : 0;
-                const hasChildren = (hier?.childCount ?? 0) > 0;
-                const isExpanded =
-                  expanded[w.code] !== undefined
-                    ? expanded[w.code]
-                    : !w.code.includes("."); // sadece L0 default açık
-
-                // Dağılım barı için min görsel
-                const barWidth = w.level === 0 ? 100 : Math.max(0.5, finalPct);
-                const c = LEVEL_COLOR[w.level] || LEVEL_COLOR[3];
-
-                return (
-                  <tr key={w.id} className={cn("hover:bg-bg2/40 transition-colors", w.level === 0 && "bg-bg2/40")}>
-                    {/* Kod / Ad */}
-                    <td className={cn(
-                      "px-3 py-2.5 border-b border-border",
-                      w.level === 0 && "font-bold text-slate-700",
-                      w.level === 1 && "font-semibold text-blue",
-                      w.level === 2 && "font-semibold text-purple",
-                      w.level === 3 && "text-text"
-                    )}>
-                      <div className="flex items-center gap-1.5" style={{ paddingLeft: `${(w.level - 1) * 16}px` }}>
-                        {hasChildren ? (
-                          <button
-                            onClick={() => toggleExpand(w.code)}
-                            className="text-text3 hover:text-text shrink-0 w-4 h-4 flex items-center justify-center"
-                          >
-                            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                          </button>
-                        ) : (
-                          <span className="w-4 shrink-0" />
-                        )}
-                        <span className="font-mono text-xs shrink-0">{w.code}</span>
-                        <span className="truncate">{w.name}</span>
-                        {w.discipline && (
-                          <Badge variant="gray" className="ml-1.5 shrink-0">
-                            {w.discipline}
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Seviye */}
-                    <td className="px-3 py-2.5 border-b border-border">
-                      <span className={cn("text-[10px] font-bold uppercase tracking-wider", c.text)}>
-                        {LEVEL_LABEL[w.level]}
-                      </span>
-                    </td>
-
-                    {/* Miktar */}
-                    <td className="px-3 py-2.5 border-b border-border text-right font-mono text-xs tabular-nums">
-                      {w.isLeaf && w.quantity > 0 ? formatNumber(w.quantity, 0) : ""}
-                    </td>
-
-                    {/* Birim */}
-                    <td className="px-3 py-2.5 border-b border-border text-xs text-text3">{w.unit}</td>
-
-                    {/* Yerel Ağırlık (%) */}
-                    <td className="px-2 py-1.5 border-b border-border text-center">
-                      {w.level === 0 ? (
-                        // L0: otomatik %100
-                        <span className="font-mono text-xs text-slate-600 tabular-nums font-semibold">
-                          100.00
-                        </span>
-                      ) : (
-                        <div className="relative inline-block">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={w.weight || ""}
-                            onChange={(e) => updateLeafWeight(w.id, e.target.value)}
-                            placeholder={(localPct).toFixed(1)}
-                            className={cn(
-                              "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
-                              "focus:outline-none focus:border-accent focus:shadow-focus",
-                              (w.weight || 0) > 0 && [c.text, "border-2", `border-${w.level === 1 ? "blue" : w.level === 2 ? "purple" : "accent"}/40`, "font-semibold"]
-                            )}
-                          />
-                          {!w.weight && (
-                            <span className={cn("absolute -bottom-3.5 left-0 right-0 text-[9px] tabular-nums", c.text, "opacity-60")}>
-                              auto {localPct.toFixed(1)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Nihai Ağırlık · Dağılım */}
-                    <td className="px-3 py-2.5 border-b border-border">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("flex-1 h-3 rounded-full overflow-hidden", c.barBg)}>
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-[width] duration-500 shadow-[inset_0_-1px_0_rgba(0,0,0,0.05)]",
-                              c.bar
-                            )}
-                            style={{ width: `${Math.min(100, barWidth)}%` }}
-                          />
-                        </div>
-                        <span className={cn("text-[10px] font-mono font-bold tabular-nums w-12 text-right", c.text)}>
-                          {finalPct < 0.01 ? "<0.01" : finalPct.toFixed(2)}%
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Aksiyonlar */}
-                    <td className="px-3 py-2.5 border-b border-border">
-                      <div className="flex gap-1 justify-end">
-                        <button
-                          onClick={() => setEditing(w)}
-                          className="p-1.5 rounded-lg text-text3 hover:bg-bg3 hover:text-accent transition-colors"
-                          title="Düzenle"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`"${w.name}" silinsin mi? (Çöp Kutusu'ndan geri yüklenebilir)`))
-                              softDeleteWbs(w.id);
-                          }}
-                          className="p-1.5 rounded-lg text-text3 hover:bg-bg3 hover:text-red transition-colors"
-                          title="Sil"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {viewMode === "all"
+                ? visible.map((w) => renderRow(w))
+                : groups?.map((g) => (
+                    <Fragment key={g.parent?.code ?? "__root__"}>
+                      {renderGroupHeader(g)}
+                      {g.children.map((w) => renderRow(w))}
+                      {renderGroupFooter(g)}
+                    </Fragment>
+                  ))}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center text-text3 text-sm">
+                  <td colSpan={7} className="px-3 py-10 text-center text-text3 text-sm">
                     Görünür kalem yok. Filtre veya genişletme durumunu kontrol et.
                   </td>
                 </tr>
