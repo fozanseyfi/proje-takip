@@ -1,18 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Header } from "./header";
 import { Sidebar, MobileDrawer } from "./sidebar";
 import { BottomNav } from "./bottom-nav";
 import { SeedProvider } from "./seed-provider";
 import { Toaster } from "@/components/ui/toast";
 
+const SIDEBAR_KEY = "ges-sidebar-collapsed";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // localStorage'dan ilk yükle
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(SIDEBAR_KEY);
+      if (stored === "1") setCollapsed(true);
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      const next = !c;
+      if (typeof window !== "undefined") {
+        localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+      }
+      return next;
+    });
+  }
+
   return (
     <SeedProvider>
       <div className="min-h-screen flex bg-bg-soft">
-        <Sidebar />
+        <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
         <div className="flex-1 min-w-0 flex flex-col">
           <Header onMenuClick={() => setDrawerOpen(true)} />
           <main className="flex-1 min-w-0 pb-20 md:pb-8">
