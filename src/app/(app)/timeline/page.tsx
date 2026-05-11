@@ -314,10 +314,10 @@ export default function TimelinePage() {
         </Card>
       ) : (
         <Card className="!p-0 overflow-hidden">
-          <div className="overflow-x-auto" ref={exportRef}>
+          <div className="overflow-auto max-h-[calc(100vh-280px)]" ref={exportRef}>
             <div className="bg-white" style={{ minWidth: `${minTableWidth}px` }}>
               {/* Header */}
-              <div className="grid grid-cols-[320px_1fr] gap-3 border-b border-border bg-bg2 px-4 py-3 sticky top-0 z-10">
+              <div className="grid grid-cols-[320px_1fr] gap-3 border-b-2 border-border bg-bg2 px-4 py-3 sticky top-0 z-20 shadow-soft">
                 <div className="text-[10px] uppercase tracking-wider font-bold text-text2">
                   İş Kalemi / Başlık
                 </div>
