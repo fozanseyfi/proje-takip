@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, FolderKanban, MapPin, Calendar, ArrowRight, Sun } from "lucide-react";
+import { Plus, FolderKanban, MapPin, Calendar, ArrowRight, Sun, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -11,16 +11,32 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogFooter } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import { formatDate, toISODate, addDays } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/store";
 import type { Currency } from "@/lib/utils";
+import { loadSampleProject } from "@/lib/data/sample-loader";
 
 export default function ProjectsPage() {
   const projects = useStore((s) => s.projects);
   const createProject = useStore((s) => s.createProject);
   const setCurrentProject = useStore((s) => s.setCurrentProject);
   const user = useCurrentUser();
+  const toast = useToast((s) => s.push);
   const [open, setOpen] = useState(false);
+
+  function loadSample() {
+    if (!user) return;
+    if (projects.some((p) => p.name === "Ankara Polatlı GES")) {
+      if (!confirm("'Ankara Polatlı GES' projesi zaten yüklenmiş. Yine de eklensin mi?")) return;
+    }
+    const { projectId } = loadSampleProject(user.id);
+    setCurrentProject(projectId);
+    toast("Ankara Polatlı GES örnek projesi yüklendi · Dashboard'a yönlendiriliyorsun", "success");
+    setTimeout(() => {
+      window.location.href = "/dashboard";
+    }, 800);
+  }
 
   const [form, setForm] = useState({
     name: "",
@@ -62,9 +78,14 @@ export default function ProjectsPage() {
         description="Tüm projelerin listesi"
         icon={FolderKanban}
         actions={
-          <Button variant="accent" onClick={() => setOpen(true)}>
-            <Plus size={14} /> Yeni Proje
-          </Button>
+          <>
+            <Button variant="outline" onClick={loadSample}>
+              <Sparkles size={14} /> Örnek Proje Yükle
+            </Button>
+            <Button variant="accent" onClick={() => setOpen(true)}>
+              <Plus size={14} /> Yeni Proje
+            </Button>
+          </>
         }
       />
 
