@@ -4,15 +4,15 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const baseClasses =
-  "w-full px-3 py-2 rounded-lg bg-white border border-border2 text-text text-sm transition-all " +
-  "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 " +
-  "placeholder:text-text3 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-bg3";
+  "w-full px-3.5 h-10 rounded-lg bg-white border border-border2 text-text text-sm transition-all " +
+  "focus:outline-none focus:border-accent focus:shadow-focus " +
+  "placeholder:text-text3 disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-bg2";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
     <input
       ref={ref}
-      className={cn(baseClasses, props.type === "number" && "font-mono", className)}
+      className={cn(baseClasses, props.type === "number" && "font-mono tabular-nums", className)}
       {...props}
     />
   )
@@ -25,7 +25,7 @@ export const Textarea = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <textarea
     ref={ref}
-    className={cn(baseClasses, "min-h-[80px] resize-y", className)}
+    className={cn(baseClasses, "min-h-[88px] h-auto py-2.5 resize-y", className)}
     {...props}
   />
 ));
@@ -37,7 +37,12 @@ export const Select = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <select
     ref={ref}
-    className={cn(baseClasses, "cursor-pointer pr-8", className)}
+    className={cn(baseClasses, "cursor-pointer pr-9 appearance-none bg-no-repeat", className)}
+    style={{
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2394a3b8'%3E%3Cpath fill-rule='evenodd' d='M10 14a1 1 0 01-.71-.29l-4-4a1 1 0 011.42-1.42L10 11.59l3.29-3.3a1 1 0 011.42 1.42l-4 4A1 1 0 0110 14z' clip-rule='evenodd'/%3E%3C/svg%3E")`,
+      backgroundPosition: "right 0.6rem center",
+      backgroundSize: "1.1rem",
+    }}
     {...props}
   >
     {children}
@@ -53,7 +58,7 @@ export function Label({
   return (
     <label
       className={cn(
-        "block text-[11px] font-semibold text-text2 mb-1.5 uppercase tracking-wider",
+        "block text-[12px] font-semibold text-text2 mb-1.5 tracking-tight",
         className
       )}
       {...props}

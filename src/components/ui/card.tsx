@@ -9,8 +9,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl bg-white border border-border p-5 shadow-soft transition-all",
-        "hover:border-border2 hover:shadow-medium",
+        "rounded-2xl bg-white border border-border p-6 shadow-soft",
         className
       )}
       {...props}
@@ -28,7 +27,7 @@ export function CardTitle({
   return (
     <div
       className={cn(
-        "font-display text-xs font-bold text-text2 uppercase tracking-[1.5px] mb-4 flex items-center gap-2",
+        "font-display text-sm font-bold text-text tracking-tight mb-4 flex items-center gap-2",
         className
       )}
       {...props}
@@ -44,10 +43,7 @@ export function CardHeader({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn("flex items-center justify-between mb-4 gap-3", className)}
-      {...props}
-    >
+    <div className={cn("flex items-center justify-between mb-5 gap-3", className)} {...props}>
       {children}
     </div>
   );
@@ -65,7 +61,7 @@ export function CardContent({
   );
 }
 
-// KPI Card — premium light variant
+// KPI Card — modern, ferah
 export function KpiCard({
   label,
   value,
@@ -75,6 +71,7 @@ export function KpiCard({
   className,
   valueClassName,
   icon,
+  iconColor = "accent",
 }: {
   label: string;
   value: React.ReactNode;
@@ -84,27 +81,37 @@ export function KpiCard({
   className?: string;
   valueClassName?: string;
   icon?: React.ReactNode;
+  iconColor?: "accent" | "blue" | "amber" | "red" | "purple";
 }) {
+  const iconStyles: Record<string, string> = {
+    accent: "bg-accent/10 text-accent",
+    blue: "bg-blue/10 text-blue",
+    amber: "bg-yellow/10 text-yellow",
+    red: "bg-red/10 text-red",
+    purple: "bg-purple/10 text-purple",
+  };
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl p-5 bg-white border border-border shadow-soft transition-all",
-        "hover:-translate-y-0.5 hover:shadow-medium hover:border-border2",
+        "relative overflow-hidden rounded-2xl p-5 bg-white border border-border shadow-soft transition-all duration-300",
+        "hover:-translate-y-0.5 hover:shadow-medium",
         className
       )}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="text-[10px] font-display uppercase tracking-[1.5px] text-text3">
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-[11px] font-display uppercase tracking-wider text-text3 font-semibold">
           {label}
         </div>
         {icon && (
-          <span className="text-text3">{icon}</span>
+          <span className={cn("inline-flex items-center justify-center w-9 h-9 rounded-xl", iconStyles[iconColor])}>
+            {icon}
+          </span>
         )}
       </div>
-      <div className={cn("font-mono text-3xl font-bold leading-none text-text", valueClassName)}>
+      <div className={cn("font-mono text-[28px] font-bold leading-none text-text tracking-tight", valueClassName)}>
         {value}
       </div>
-      {sub && <div className="text-xs text-text2 mt-2">{sub}</div>}
+      {sub && <div className="text-xs text-text2 mt-2 font-medium">{sub}</div>}
       {typeof barPct === "number" && (
         <div className="h-1 bg-bg3 rounded-full mt-4 overflow-hidden">
           <div

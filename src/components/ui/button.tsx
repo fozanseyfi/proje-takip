@@ -7,31 +7,31 @@ type Variant = "primary" | "accent" | "ghost" | "danger" | "outline" | "soft";
 type Size = "sm" | "md" | "lg" | "icon";
 
 const variants: Record<Variant, string> = {
-  // Filled accent (primary action) — navy
+  // Emerald solid — primary action
   accent:
-    "bg-accent text-white border border-accent hover:bg-accent2 hover:border-accent2 shadow-soft",
-  // Filled primary — blue
+    "bg-accent text-white hover:bg-accent2 active:bg-accent2 shadow-soft hover:shadow-medium",
+  // Blue solid — alternative
   primary:
-    "bg-blue text-white border border-blue hover:bg-blue2 hover:border-blue2 shadow-soft",
-  // Outline
-  outline:
-    "bg-white text-text border border-border2 hover:bg-bg3 hover:border-text3",
-  // Ghost (subtle)
-  ghost:
-    "bg-bg3 text-text2 border border-border hover:bg-bg4 hover:text-text",
-  // Soft accent
+    "bg-blue text-white hover:bg-blue2 active:bg-blue2 shadow-soft hover:shadow-medium",
+  // Soft emerald tint
   soft:
-    "bg-accent/8 text-accent border border-accent/20 hover:bg-accent/15 hover:border-accent/30",
+    "bg-accent/10 text-accent hover:bg-accent/15",
+  // White button with border
+  outline:
+    "bg-white text-text border border-border2 hover:bg-bg2 hover:border-text3",
+  // Subtle button
+  ghost:
+    "bg-transparent text-text2 hover:bg-bg3 hover:text-text",
   // Danger
   danger:
-    "bg-red text-white border border-red hover:bg-red/90",
+    "bg-red text-white hover:bg-red/90 shadow-soft",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-xs",
-  md: "h-9 px-4 text-sm",
-  lg: "h-11 px-5 text-sm",
-  icon: "h-9 w-9 p-0",
+  sm: "h-8 px-3 text-xs rounded-lg",
+  md: "h-10 px-4 text-sm rounded-lg",
+  lg: "h-11 px-5 text-sm rounded-xl",
+  icon: "h-9 w-9 p-0 rounded-lg",
 };
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -44,8 +44,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-semibold tracking-tight transition-all",
-        "disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "inline-flex items-center justify-center gap-2 font-semibold tracking-tight transition-all duration-150",
+        "disabled:opacity-50 disabled:pointer-events-none",
+        "focus-visible:outline-none focus-visible:shadow-focus",
         variants[variant],
         sizes[size],
         className

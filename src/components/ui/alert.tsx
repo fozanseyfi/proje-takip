@@ -4,23 +4,18 @@ import { Info, CheckCircle2, AlertTriangle, AlertCircle } from "lucide-react";
 
 type Variant = "info" | "success" | "warning" | "error";
 
-const variants: Record<Variant, { bg: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
-  info: {
-    bg: "bg-blue/8 border-blue/20 text-blue2",
-    icon: Info,
-  },
-  success: {
-    bg: "bg-green/8 border-green/20 text-green",
-    icon: CheckCircle2,
-  },
-  warning: {
-    bg: "bg-yellow/8 border-yellow/30 text-yellow",
-    icon: AlertTriangle,
-  },
-  error: {
-    bg: "bg-red/8 border-red/20 text-red",
-    icon: AlertCircle,
-  },
+const styles: Record<Variant, { wrap: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
+  info:    { wrap: "bg-accent/5 border-accent/20 text-text",  icon: Info },
+  success: { wrap: "bg-green/5 border-green/20 text-text",    icon: CheckCircle2 },
+  warning: { wrap: "bg-yellow/5 border-yellow/30 text-text",  icon: AlertTriangle },
+  error:   { wrap: "bg-red/5 border-red/20 text-text",        icon: AlertCircle },
+};
+
+const iconColor: Record<Variant, string> = {
+  info:    "text-accent",
+  success: "text-green",
+  warning: "text-yellow",
+  error:   "text-red",
 };
 
 export function Alert({
@@ -32,17 +27,17 @@ export function Alert({
   className?: string;
   children: React.ReactNode;
 }) {
-  const { bg, icon: Icon } = variants[variant];
+  const { wrap, icon: Icon } = styles[variant];
   return (
     <div
       className={cn(
-        "flex items-start gap-2.5 px-4 py-3 rounded-lg border text-sm",
-        bg,
+        "flex items-start gap-3 px-4 py-3 rounded-xl border text-sm",
+        wrap,
         className
       )}
     >
-      <Icon size={16} className="shrink-0 mt-0.5" />
-      <div className="flex-1 text-text">{children}</div>
+      <Icon size={18} className={cn("shrink-0 mt-0.5", iconColor[variant])} />
+      <div className="flex-1 leading-snug">{children}</div>
     </div>
   );
 }

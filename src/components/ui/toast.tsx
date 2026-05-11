@@ -36,11 +36,11 @@ const ICON: Record<ToastVariant, React.ComponentType<{ size?: number; className?
   info: Info,
 };
 
-const STYLES: Record<ToastVariant, string> = {
-  success: "border-green/30 [&_svg]:text-green",
-  error: "border-red/30 [&_svg]:text-red",
-  warning: "border-yellow/40 [&_svg]:text-yellow",
-  info: "border-accent/30 [&_svg]:text-accent",
+const ACCENT: Record<ToastVariant, string> = {
+  success: "text-green border-l-green",
+  error:   "text-red border-l-red",
+  warning: "text-yellow border-l-yellow",
+  info:    "text-accent border-l-accent",
 };
 
 export function Toaster() {
@@ -55,16 +55,16 @@ export function Toaster() {
           <div
             key={t.id}
             className={cn(
-              "min-w-[280px] max-w-md flex items-start gap-3 px-4 py-3 rounded-xl border bg-white text-sm",
+              "min-w-[280px] max-w-md flex items-start gap-3 pl-3 pr-3 py-3 rounded-xl border border-border border-l-4 bg-white text-sm",
               "pointer-events-auto shadow-large animate-toast-in",
-              STYLES[t.variant]
+              ACCENT[t.variant]
             )}
           >
-            <Icon size={16} className="shrink-0 mt-0.5" />
-            <div className="flex-1 text-text font-medium">{t.message}</div>
+            <Icon size={18} className="shrink-0 mt-0.5" />
+            <div className="flex-1 text-text font-medium leading-snug">{t.message}</div>
             <button
               onClick={() => dismiss(t.id)}
-              className="text-text3 hover:text-text -mr-1 -my-0.5 p-0.5"
+              className="text-text3 hover:text-text -mr-1 -my-0.5 p-0.5 rounded"
             >
               <X size={14} />
             </button>

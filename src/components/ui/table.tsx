@@ -6,7 +6,7 @@ export function TableWrap({
   children,
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("overflow-x-auto rounded-xl border border-border bg-white shadow-soft", className)}>
+    <div className={cn("overflow-x-auto rounded-2xl border border-border bg-white shadow-soft", className)}>
       {children}
     </div>
   );
@@ -35,7 +35,7 @@ export function TH({
   return (
     <th
       className={cn(
-        "bg-bg3 text-left px-3 py-2.5 text-text2 text-[10px] uppercase tracking-[1.2px] font-display font-semibold border-b border-border whitespace-nowrap",
+        "bg-bg2 text-left px-4 py-3 text-text2 text-[11px] uppercase tracking-wider font-semibold border-b border-border whitespace-nowrap",
         className
       )}
       {...props}
@@ -56,7 +56,7 @@ export function TR({
 }: React.HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn("hover:bg-bg2 transition-colors group", className)}
+      className={cn("hover:bg-bg2 transition-colors group last:[&_td]:border-b-0", className)}
       {...props}
     >
       {children}
@@ -71,7 +71,7 @@ export function TD({
 }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td
-      className={cn("px-3 py-2.5 border-b border-border text-text align-middle", className)}
+      className={cn("px-4 py-3 border-b border-border text-text align-middle", className)}
       {...props}
     >
       {children}
@@ -82,7 +82,7 @@ export function TD({
 export function Empty({ children, colSpan }: { children: React.ReactNode; colSpan: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-3 py-10 text-center text-text3 text-sm">
+      <td colSpan={colSpan} className="px-3 py-12 text-center text-text3 text-sm">
         {children}
       </td>
     </tr>

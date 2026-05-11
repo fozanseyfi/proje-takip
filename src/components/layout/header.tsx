@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bell, ChevronDown, LogOut, User as UserIcon, Menu, FolderKanban } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser } from "@/lib/store";
 import { computeProgress } from "@/lib/calc/progress";
-import { formatDate, spiLevel } from "@/lib/utils";
+import { spiLevel } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { Logo } from "@/components/brand/logo";
+import { allNavItems } from "./nav-config";
 
 export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const projects = useStore((s) => s.projects);
@@ -18,6 +19,7 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const realizedAll = useStore((s) => s.realized);
   const currentUser = useCurrentUser();
   const notifications = useStore((s) => s.notifications).filter((n) => !n.readAt);
+  const pathname = usePathname();
 
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -37,121 +39,107 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
     ? { good: "text-green", warn: "text-yellow", bad: "text-red" }[spiLevel(stats.spi)!]
     : "text-text3";
 
+  // Current page label
+  const currentNav = allNavItems.find((n) => pathname === n.href || pathname?.startsWith(n.href + "/"));
+
+  const userInitial = currentUser?.fullName?.[0]?.toUpperCase() ?? "K";
+
   return (
-    <header className="sticky top-0 z-30 h-16 px-3 sm:px-6 flex items-center gap-2 sm:gap-5 bg-white/90 border-b border-border backdrop-blur-xl">
+    <header className="sticky top-0 z-30 h-16 px-4 sm:px-6 flex items-center gap-3 sm:gap-5 bg-white/90 border-b border-border backdrop-blur-xl">
       {onMenuClick && (
         <button
           onClick={onMenuClick}
-          className="md:hidden p-2 rounded-md hover:bg-bg3 text-text2"
+          className="md:hidden p-2 rounded-lg hover:bg-bg3 text-text2"
           aria-label="Menü"
         >
           <Menu size={18} />
         </button>
       )}
 
-      <Link href="/dashboard" className="flex items-center gap-2 group">
-        <Logo size={28} textClassName="text-base sm:text-lg" />
-      </Link>
-
-      {/* Project selector — desktop */}
-      <div className="relative hidden md:block border-l border-border pl-4 ml-1">
+      {/* Current page / project context */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
           onClick={() => setProjectMenuOpen((v) => !v)}
           onBlur={() => setTimeout(() => setProjectMenuOpen(false), 150)}
-          className="flex items-center gap-2 text-sm text-text2 hover:text-text transition-colors"
+          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-bg2 text-sm transition-colors relative"
         >
           <FolderKanban size={14} className="text-text3" />
-          <span className="text-text3">Proje:</span>
-          <strong className="text-text font-medium">{currentProject?.name ?? "—"}</strong>
-          <ChevronDown size={14} className={cn("transition-transform", projectMenuOpen && "rotate-180")} />
+          <span className="text-text3 hidden lg:inline">Proje:</span>
+          <strong className="text-text font-semibold">{currentProject?.name ?? "—"}</strong>
+          <ChevronDown size={14} className={cn("text-text3 transition-transform", projectMenuOpen && "rotate-180")} />
+          {projectMenuOpen && (
+            <div className="absolute top-10 left-0 z-40">
+              <ProjectDropdown
+                projects={projects}
+                currentId={currentProject?.id}
+                onPick={(id) => {
+                  setCurrentProject(id);
+                  setProjectMenuOpen(false);
+                }}
+              />
+            </div>
+          )}
         </button>
-        {projectMenuOpen && (
-          <div className="absolute top-9 left-0 z-40">
-            <ProjectDropdown
-              projects={projects}
-              currentId={currentProject?.id}
-              onPick={(id) => {
-                setCurrentProject(id);
-                setProjectMenuOpen(false);
-              }}
-            />
-          </div>
-        )}
-      </div>
 
-      {/* Project selector — mobile */}
-      <div className="md:hidden relative flex-1 min-w-0">
-        <button
-          onClick={() => setProjectMenuOpen((v) => !v)}
-          onBlur={() => setTimeout(() => setProjectMenuOpen(false), 150)}
-          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-bg3 text-text2 max-w-full"
-        >
-          <FolderKanban size={14} className="shrink-0 text-text3" />
-          <span className="text-xs font-medium truncate text-text">{currentProject?.name ?? "Proje seç"}</span>
-          <ChevronDown size={12} className="shrink-0" />
-        </button>
-        {projectMenuOpen && (
-          <div className="absolute top-10 left-0 right-2 z-40">
-            <ProjectDropdown
-              projects={projects}
-              currentId={currentProject?.id}
-              onPick={(id) => {
-                setCurrentProject(id);
-                setProjectMenuOpen(false);
-              }}
-            />
-          </div>
-        )}
+        {/* Page title on mobile */}
+        <div className="md:hidden flex-1 min-w-0">
+          {currentNav ? (
+            <div className="text-sm font-bold text-text truncate">{currentNav.label}</div>
+          ) : (
+            <div className="text-sm font-bold text-text truncate">{currentProject?.name}</div>
+          )}
+        </div>
       </div>
 
       {/* Stats — desktop only */}
       {currentProject && stats && (
-        <div className="ml-auto hidden lg:flex items-center gap-5">
-          <Stat label="Rapor Günü" value={formatDate(currentProject.reportDate)} />
-          <Divider />
+        <div className="hidden lg:flex items-center gap-5 px-4">
           <Stat label="Plan" value={`${(stats.planPct * 100).toFixed(1)}%`} valueClass="text-planned" />
-          <Stat label="Gerçek" value={`${(stats.realPct * 100).toFixed(1)}%`} valueClass="text-realized" />
+          <Stat label="Real" value={`${(stats.realPct * 100).toFixed(1)}%`} valueClass="text-realized" />
           <Stat label="SPI" value={stats.spi == null ? "—" : stats.spi.toFixed(3)} valueClass={spiClass} />
         </div>
       )}
 
       {/* Mobile SPI badge */}
       {currentProject && stats?.spi != null && (
-        <div className="lg:hidden font-mono text-xs px-2.5 py-1 rounded-md bg-bg3 border border-border">
+        <div className="lg:hidden font-mono text-xs px-2.5 py-1 rounded-md bg-bg2 border border-border">
           <span className="text-text3">SPI </span>
           <span className={spiClass}>{stats.spi.toFixed(2)}</span>
         </div>
       )}
 
-      <div className={cn("flex items-center gap-1 sm:gap-2", !currentProject && "ml-auto")}>
-        <button className="relative p-2 rounded-md hover:bg-bg3 text-text2 hover:text-text transition-colors">
-          <Bell size={16} />
+      <div className="flex items-center gap-1 sm:gap-2">
+        <button className="relative p-2 rounded-lg hover:bg-bg3 text-text2 hover:text-text transition-colors">
+          <Bell size={18} />
           {notifications.length > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red text-[10px] font-bold text-white flex items-center justify-center">
-              {notifications.length}
-            </span>
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red ring-2 ring-white" />
           )}
         </button>
         <div className="relative">
           <button
             onClick={() => setUserMenuOpen((v) => !v)}
             onBlur={() => setTimeout(() => setUserMenuOpen(false), 150)}
-            className="flex items-center gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-bg3 transition-colors"
+            className="flex items-center gap-2.5 pl-1 pr-2 sm:pr-3 py-1 rounded-lg hover:bg-bg2 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
-              <UserIcon size={14} />
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+              style={{ background: "linear-gradient(135deg, #10b981 0%, #047857 100%)" }}
+            >
+              {userInitial}
             </div>
             <div className="hidden sm:block text-left">
-              <div className="text-xs font-semibold text-text">{currentUser?.fullName ?? "—"}</div>
-              <div className="text-[10px] text-text3">{currentUser?.isSuperAdmin ? "Süper Admin" : "Kullanıcı"}</div>
+              <div className="text-xs font-semibold text-text leading-tight">{currentUser?.fullName ?? "—"}</div>
+              <div className="text-[10px] text-text3 leading-tight">{currentUser?.isSuperAdmin ? "Yönetici" : "Kullanıcı"}</div>
             </div>
+            <ChevronDown size={14} className="text-text3 hidden sm:block" />
           </button>
           {userMenuOpen && (
-            <div className="absolute top-12 right-0 min-w-[200px] py-1 rounded-lg bg-white border border-border shadow-medium z-40">
-              <Link href="/account" className="block px-3 py-2 text-sm text-text2 hover:bg-bg3 hover:text-text">
-                Profilim
+            <div className="absolute top-12 right-0 min-w-[200px] py-1 rounded-xl bg-white border border-border shadow-medium z-40">
+              <Link href="/account" className="flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg2 hover:text-text">
+                <UserIcon size={14} /> Profilim
               </Link>
-              <Link href="/login" className="flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg3 hover:text-text">
+              <div className="border-t border-border my-1" />
+              <Link href="/login" className="flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg2 hover:text-text">
                 <LogOut size={14} /> Çıkış
               </Link>
             </div>
@@ -164,15 +152,11 @@ export function Header({ onMenuClick }: { onMenuClick?: () => void }) {
 
 function Stat({ label, value, valueClass }: { label: string; value: React.ReactNode; valueClass?: string }) {
   return (
-    <div className="text-right">
-      <div className="text-[9px] uppercase tracking-[1.5px] font-display text-text3 mb-0.5">{label}</div>
-      <div className={cn("font-mono text-sm font-semibold", valueClass)}>{value}</div>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider font-bold text-text3">{label}</span>
+      <span className={cn("font-mono text-sm font-bold tabular-nums", valueClass)}>{value}</span>
     </div>
   );
-}
-
-function Divider() {
-  return <span className="h-6 w-px bg-border" />;
 }
 
 function ProjectDropdown({
@@ -185,23 +169,23 @@ function ProjectDropdown({
   onPick: (id: string) => void;
 }) {
   return (
-    <div className="min-w-[280px] py-1 rounded-lg bg-white border border-border shadow-medium">
+    <div className="min-w-[280px] py-1 rounded-xl bg-white border border-border shadow-medium">
       {projects.map((p) => (
         <button
           key={p.id}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(p.id)}
           className={cn(
-            "block w-full text-left px-3 py-2 text-sm hover:bg-bg3 transition-colors",
+            "block w-full text-left px-3 py-2 text-sm hover:bg-bg2 transition-colors",
             p.id === currentId ? "text-accent bg-accent/5" : "text-text2"
           )}
         >
-          <div className="font-medium">{p.name}</div>
+          <div className="font-semibold">{p.name}</div>
           <div className="text-[11px] text-text3">{p.location}</div>
         </button>
       ))}
       <div className="border-t border-border my-1" />
-      <Link href="/projects" className="block px-3 py-2 text-sm text-accent hover:bg-bg3">
+      <Link href="/projects" className="block px-3 py-2 text-sm text-accent font-semibold hover:bg-bg2">
         + Tüm projeler / yeni proje
       </Link>
     </div>

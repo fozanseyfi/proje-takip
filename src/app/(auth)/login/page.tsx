@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
+import { Lock, Mail, ArrowRight, ShieldCheck, BarChart3, Smartphone, FolderKanban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Logo } from "@/components/brand/logo";
@@ -16,23 +16,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_1fr] gap-8 lg:gap-16 items-center animate-fade-in">
-      {/* Left side: brand panel */}
+    <div className="w-full max-w-5xl grid lg:grid-cols-[1.05fr_1fr] gap-10 lg:gap-16 items-center animate-fade-in">
+      {/* Brand side */}
       <div className="hidden lg:flex flex-col gap-6">
-        <Logo size={44} textClassName="text-xl tracking-[2.5px]" />
-        <h1 className="font-display text-4xl xl:text-5xl font-extrabold text-text leading-tight tracking-tight">
+        <Logo size={44} textClassName="text-xl" />
+        <h1 className="font-display text-[44px] xl:text-5xl font-extrabold text-text leading-[1.05] tracking-tight">
           GES projelerini <br />
-          <span className="text-shimmer">tek platformda</span> yönet
+          <span className="text-shimmer">tek platformda</span> yönet.
         </h1>
         <p className="text-text2 text-base leading-relaxed max-w-md">
           Mühendislik · Satın alma · Saha uygulama · Devreye alma — uçtan uca yaşam döngüsü takibi,
-          PMP standartlarında KPI&apos;lar, mobil saha operasyonu.
+          PMP standartlarında KPI&apos;lar ve mobil saha operasyonu.
         </p>
         <div className="grid grid-cols-2 gap-3 mt-2 max-w-md">
-          <Feature label="11+ Modül" />
-          <Feature label="SPI / CPI / EAC" />
-          <Feature label="Mobil Saha" />
-          <Feature label="Çoklu Proje" />
+          <Feature icon={<FolderKanban size={16} />} label="11+ Modül" />
+          <Feature icon={<BarChart3 size={16} />} label="SPI / CPI / EAC" />
+          <Feature icon={<Smartphone size={16} />} label="Mobil Saha" />
+          <Feature icon={<ShieldCheck size={16} />} label="Çoklu Proje" />
         </div>
         <div className="flex items-center gap-2 mt-4 text-xs text-text3">
           <ShieldCheck size={14} className="text-green" />
@@ -40,48 +40,40 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right side: form panel */}
+      {/* Form side */}
       <div className="relative">
-        <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-accent/10 via-transparent to-accent3/10 blur-2xl opacity-60 pointer-events-none" />
-
-        <div className="relative rounded-2xl bg-white border border-border p-7 sm:p-8 shadow-large">
+        <div className="relative rounded-2xl bg-white border border-border p-8 shadow-large">
           <div className="lg:hidden mb-6 flex justify-center">
-            <Logo size={36} textClassName="text-lg tracking-[2px]" />
+            <Logo size={40} compact textClassName="text-lg" />
           </div>
 
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={14} className="text-accent" />
-            <span className="text-[10px] font-display tracking-[2px] uppercase text-accent font-bold">
-              Hoş Geldin
-            </span>
-          </div>
-          <h2 className="font-display text-2xl font-extrabold mb-1 text-text">Giriş Yap</h2>
-          <p className="text-sm text-text2 mb-6">Hesabınla GES Takip&apos;e devam et</p>
+          <h2 className="font-display text-2xl font-extrabold text-text tracking-tight">Hoş geldin</h2>
+          <p className="text-sm text-text2 mt-1 mb-6">Devam etmek için giriş yap</p>
 
           <form onSubmit={submit} className="space-y-4">
             <Field label="E-posta">
               <div className="relative">
-                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text3" />
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text3" />
                 <Input
                   type="email"
                   defaultValue="ozan.seyfi@kontrolmatik.com"
-                  className="pl-9 !h-11"
+                  className="pl-10 h-11"
                   placeholder="ornek@firma.com"
                 />
               </div>
             </Field>
             <Field label="Şifre">
               <div className="relative">
-                <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text3" />
-                <Input type="password" defaultValue="demo" className="pl-9 !h-11" placeholder="••••••••" />
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text3" />
+                <Input type="password" defaultValue="demo" className="pl-10 h-11" placeholder="••••••••" />
               </div>
             </Field>
             <div className="flex items-center justify-between text-sm pt-1">
-              <label className="flex items-center gap-2 text-text2 cursor-pointer">
-                <input type="checkbox" className="accent-accent w-4 h-4" />
+              <label className="flex items-center gap-2 text-text2 cursor-pointer select-none">
+                <input type="checkbox" className="accent-accent w-4 h-4 rounded" />
                 Beni hatırla
               </label>
-              <Link href="/forgot-password" className="text-accent hover:underline font-medium">
+              <Link href="/forgot-password" className="text-accent hover:underline font-semibold">
                 Şifremi unuttum
               </Link>
             </div>
@@ -92,24 +84,24 @@ export default function LoginPage() {
 
           <div className="my-6 flex items-center gap-3">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-[10px] text-text3 uppercase tracking-wider font-semibold">veya</span>
+            <span className="text-[11px] text-text3 uppercase tracking-wider font-bold">veya</span>
             <div className="flex-1 h-px bg-border" />
           </div>
 
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-white border border-border2 hover:bg-bg3 transition-all text-text font-semibold text-sm"
+              className="h-11 flex items-center justify-center gap-2 rounded-lg bg-white border border-border2 hover:bg-bg2 transition-all text-text font-semibold text-sm"
             >
-              <GoogleIcon /> Google ile devam et
+              <GoogleIcon /> Google
             </button>
             <button
               type="button"
               onClick={() => router.push("/dashboard")}
-              className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-white border border-border2 hover:bg-bg3 transition-all text-text font-semibold text-sm"
+              className="h-11 flex items-center justify-center gap-2 rounded-lg bg-white border border-border2 hover:bg-bg2 transition-all text-text font-semibold text-sm"
             >
-              <MicrosoftIcon /> Microsoft ile devam et
+              <MicrosoftIcon /> Microsoft
             </button>
           </div>
 
@@ -118,7 +110,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <p className="text-[10px] text-text3 text-center mt-4 tracking-wider uppercase font-semibold">
+        <p className="text-[10px] text-text3 text-center mt-4 tracking-wider uppercase font-bold">
           Lokal mod · herhangi bir e-posta/şifre ile giriş yapabilirsin
         </p>
       </div>
@@ -126,11 +118,11 @@ export default function LoginPage() {
   );
 }
 
-function Feature({ label }: { label: string }) {
+function Feature({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-border shadow-soft">
-      <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-      <span className="text-xs text-text font-medium">{label}</span>
+    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white border border-border shadow-soft">
+      <span className="text-accent">{icon}</span>
+      <span className="text-sm text-text font-semibold">{label}</span>
     </div>
   );
 }

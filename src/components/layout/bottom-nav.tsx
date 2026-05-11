@@ -18,10 +18,11 @@ export function BottomNav({ onMenuClick }: { onMenuClick: () => void }) {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 text-[10px] transition-colors",
+              "flex flex-col items-center justify-center gap-1 text-[10px] transition-colors relative",
               active ? "text-accent" : "text-text3 hover:text-text2"
             )}
           >
+            {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-accent" />}
             <Icon size={20} />
             <span className="font-semibold leading-tight">{item.label.split(" ")[0]}</span>
           </Link>

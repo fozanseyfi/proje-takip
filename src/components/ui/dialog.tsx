@@ -21,9 +21,7 @@ export function Dialog({
 }) {
   React.useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
@@ -43,7 +41,7 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[2px] overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto animate-fade-in"
       onClick={onClose}
     >
       <div
@@ -55,19 +53,19 @@ export function Dialog({
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-border">
             <div className="font-display font-bold text-text tracking-tight text-base">
               {title}
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md hover:bg-bg3 text-text3 hover:text-text transition-colors"
+              className="p-1.5 rounded-lg hover:bg-bg3 text-text3 hover:text-text transition-colors"
             >
               <X size={16} />
             </button>
           </div>
         )}
-        <div className="overflow-y-auto p-6 flex-1">{children}</div>
+        <div className="overflow-y-auto px-6 py-5 flex-1">{children}</div>
       </div>
     </div>
   );
@@ -75,7 +73,7 @@ export function Dialog({
 
 export function DialogFooter({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex justify-end gap-2 mt-6 pt-4 border-t border-border", className)}>
+    <div className={cn("flex justify-end gap-2 mt-6 pt-5 border-t border-border", className)}>
       {children}
     </div>
   );
