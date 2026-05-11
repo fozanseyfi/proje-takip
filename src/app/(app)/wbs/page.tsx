@@ -123,6 +123,34 @@ export default function WbsPage() {
     return undefined;
   }
 
+  // Eksik ağırlık kalemleri (karışık durum: aynı parent altında bazıları dolu, bazıları boş)
+  const missingItems = useMemo(() => {
+    const items: { wbs: WbsItem; parent: WbsItem | null; siblingCount: number; filledCount: number }[] = [];
+    // Tüm node'ları parent'a göre grupla
+    const groupsByParent = new Map<string, WbsItem[]>();
+    for (const w of allWbs) {
+      if (w.deletedAt) continue;
+      if (w.level === 0) continue; // L0 hariç
+      const parent = findClosestParent(w.code);
+      const key = parent?.code ?? "__root__";
+      if (!groupsByParent.has(key)) groupsByParent.set(key, []);
+      groupsByParent.get(key)!.push(w);
+    }
+    for (const [parentCode, children] of groupsByParent.entries()) {
+      const filledCount = children.filter((c) => (c.weight || 0) > 0).length;
+      // Karışık durum: bazıları girilmiş ama hepsi değil
+      if (filledCount === 0 || filledCount === children.length) continue;
+      const parent = parentCode === "__root__" ? null : (allWbs.find((p) => p.code === parentCode) ?? null);
+      for (const c of children) {
+        if ((c.weight || 0) === 0) {
+          items.push({ wbs: c, parent, siblingCount: children.length, filledCount });
+        }
+      }
+    }
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allWbs]);
+
   // Grup mantığı (sadece main/sub/items modunda)
   const groups = useMemo(() => {
     if (viewMode === "all") return null;
@@ -235,27 +263,42 @@ export default function WbsPage() {
         <td className="px-3 py-2.5 border-b border-border text-xs text-text3">{w.unit}</td>
 
         {/* Yerel Ağırlık */}
-        <td className="px-2 py-1.5 border-b border-border text-center">
-          <div className="relative inline-block">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={w.weight || ""}
-              onChange={(e) => updateLeafWeight(w.id, e.target.value)}
-              placeholder={localPct.toFixed(1)}
-              className={cn(
-                "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
-                "focus:outline-none focus:border-accent focus:shadow-focus",
-                (w.weight || 0) > 0 && [c.text, "border-2", borderColorClass, "font-semibold"]
+        <td className={cn("px-2 py-1.5 border-b border-border", viewMode === "all" ? "text-left" : "text-center")}>
+          {viewMode === "all" ? (
+            // "Tümü" modunda salt-okunur, seviyeye göre girintili sayı
+            <div style={{ paddingLeft: `${(w.level - 1) * 18}px` }}>
+              {(w.weight || 0) > 0 ? (
+                <span className={cn("font-mono text-xs font-bold tabular-nums", c.text)}>
+                  {w.weight.toFixed(1)}
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] text-text3 italic">
+                  auto {localPct.toFixed(1)}
+                </span>
               )}
-            />
-            {!w.weight && (
-              <span className={cn("absolute -bottom-3.5 left-0 right-0 text-[9px] tabular-nums opacity-60", c.text)}>
-                auto {localPct.toFixed(1)}
-              </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="relative inline-block">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={w.weight || ""}
+                onChange={(e) => updateLeafWeight(w.id, e.target.value)}
+                placeholder={localPct.toFixed(1)}
+                className={cn(
+                  "w-24 h-8 px-2 rounded-lg bg-white border border-border2 text-center font-mono text-xs tabular-nums",
+                  "focus:outline-none focus:border-accent focus:shadow-focus",
+                  (w.weight || 0) > 0 && [c.text, "border-2", borderColorClass, "font-semibold"]
+                )}
+              />
+              {!w.weight && (
+                <span className={cn("absolute -bottom-3.5 left-0 right-0 text-[9px] tabular-nums opacity-60", c.text)}>
+                  auto {localPct.toFixed(1)}
+                </span>
+              )}
+            </div>
+          )}
         </td>
 
         {/* Nihai Ağırlık · Dağılım */}
@@ -517,6 +560,49 @@ export default function WbsPage() {
         </Alert>
       )}
 
+      {/* Eksik kalem listesi (açılır) */}
+      {missingItems.length > 0 && (
+        <details className="mb-4 rounded-xl bg-yellow/5 border border-yellow/30 group">
+          <summary className="px-4 py-3 cursor-pointer flex items-center gap-3 text-sm font-semibold text-text list-none [&::-webkit-details-marker]:hidden">
+            <AlertTriangle size={16} className="text-yellow shrink-0" />
+            <span>
+              <strong>{missingItems.length} kalem</strong> ağırlığı eksik — kardeşler arasında
+              karışık durum (bazıları dolu, bazıları boş)
+            </span>
+            <ChevronDown size={16} className="ml-auto text-text3 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="px-4 py-3 border-t border-yellow/20 max-h-72 overflow-y-auto">
+            <ul className="space-y-1.5">
+              {missingItems.map((m, i) => (
+                <li
+                  key={i}
+                  className="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-yellow/10 text-sm"
+                >
+                  <span
+                    className={cn(
+                      "text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shrink-0",
+                      LEVEL_COLOR[m.wbs.level].text,
+                      LEVEL_COLOR[m.wbs.level].barBg
+                    )}
+                  >
+                    {LEVEL_LABEL[m.wbs.level]}
+                  </span>
+                  <span className="font-mono text-xs text-text3 shrink-0">{m.wbs.code}</span>
+                  <span className="text-text font-medium truncate">{m.wbs.name}</span>
+                  <span className="ml-auto text-[11px] text-text3 whitespace-nowrap">
+                    {m.parent ? `${m.parent.code} altında` : "kök altında"} ·
+                    <span className="font-mono ml-1">
+                      {m.filledCount}/{m.siblingCount}
+                    </span>{" "}
+                    dolu
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      )}
+
       {/* Ana tablo */}
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto max-h-[72vh] overflow-y-auto">
@@ -537,6 +623,11 @@ export default function WbsPage() {
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-center text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border whitespace-nowrap min-w-[7rem]">
                   Yerel Ağırlık (%)
+                  {viewMode === "all" && (
+                    <span className="ml-1 text-[9px] text-text3 normal-case font-medium">
+                      (salt okunur)
+                    </span>
+                  )}
                 </th>
                 <th className="sticky top-0 z-20 bg-bg2 px-3 py-3 text-left text-[10px] uppercase tracking-wider font-bold text-text2 border-b border-border min-w-[20rem]">
                   Nihai Ağırlık · Dağılım
