@@ -49,7 +49,8 @@ import { SCurveChart } from "@/components/charts/s-curve-chart";
 import { MiniSCurve } from "@/components/charts/section-scurve";
 import { HeadcountBar } from "@/components/charts/headcount-bar";
 import { TrendLine } from "@/components/charts/trend-line";
-import { Donut, DonutLegend } from "@/components/charts/billing-donut";
+import { BillingDetailWidget } from "@/components/dashboard/billing-detail";
+import { ManhourDetailWidget } from "@/components/dashboard/manhour-detail";
 import {
   formatDate,
   daysBetween,
@@ -155,31 +156,11 @@ export default function DashboardPage() {
     today
   );
 
-  // Adam-saat disiplin
-  const manhourStats = manhourByDiscipline(personnelAttendance, personnel, projectId);
-
   // Procurement follow-up
   const procFollow = procurementFollowup(
     procurement.filter((p) => p.projectId === projectId),
     today
   );
-
-  // Billing donut
-  const billingForProject = billing.filter((b) => b.projectId === projectId);
-  const billSum = billingSummary(billingForProject);
-  const billingTotal = billingForProject
-    .filter((b) => b.status !== "iptal")
-    .reduce((s, b) => s + b.amount, 0);
-  const billingPaid = billingForProject
-    .filter((b) => b.status === "odendi")
-    .reduce((s, b) => s + b.amount, 0);
-  const billingPaidPct = billingTotal > 0 ? (billingPaid / billingTotal) * 100 : 0;
-  const donutData = [
-    { label: "Ödendi", value: billSum.find((x) => x.status === "odendi")?.count ?? 0, color: "#10b981" },
-    { label: "Gönderildi", value: billSum.find((x) => x.status === "gonderildi")?.count ?? 0, color: "#3b82f6" },
-    { label: "Taslak", value: billSum.find((x) => x.status === "taslak")?.count ?? 0, color: "#94a3b8" },
-    { label: "İptal", value: billSum.find((x) => x.status === "iptal")?.count ?? 0, color: "#ef4444" },
-  ];
 
   // 15-Gün kritik işler
   const fifteen = toISODate(addDays(today, 15));
@@ -519,74 +500,18 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* ADAM-SAAT TABLOSU */}
-      {manhourStats.length > 0 && (
-        <Card className="mb-6 animate-slide-up">
-          <CardTitle>
-            <Clock size={14} className="text-accent" />
-            Adam-Saat Analiz Tablosu · Disiplin Bazlı
-          </CardTitle>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b border-border">
-                  <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3">Disiplin</th>
-                  <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Kişi</th>
-                  <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Adam-Saat</th>
-                  <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Adam-Gün</th>
-                  <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3">Pay</th>
-                </tr>
-              </thead>
-              <tbody>
-                {manhourStats.map((m) => {
-                  const pct = totalManhours > 0 ? (m.hours / totalManhours) * 100 : 0;
-                  return (
-                    <tr key={m.discipline} className="hover:bg-bg2/40">
-                      <td className="py-2.5 font-semibold capitalize">{getDisciplineLabel(m.discipline)}</td>
-                      <td className="py-2.5 text-right font-mono text-text2 tabular-nums">{m.uniquePeople}</td>
-                      <td className="py-2.5 text-right font-mono font-semibold text-text tabular-nums">
-                        {formatNumber(m.hours, 1)}
-                      </td>
-                      <td className="py-2.5 text-right font-mono font-semibold text-accent tabular-nums">
-                        {formatNumber(m.manDays, 1)}
-                      </td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-bg3 rounded-full overflow-hidden max-w-[150px]">
-                            <div
-                              className="h-full bg-accent rounded-full"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-[11px] font-mono text-text3 tabular-nums w-12">
-                            {pct.toFixed(1)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr className="border-t border-border bg-bg2/30">
-                  <td className="py-2.5 font-bold text-text">Toplam</td>
-                  <td className="py-2.5 text-right font-mono font-bold text-text tabular-nums">
-                    {uniquePersonnel}
-                  </td>
-                  <td className="py-2.5 text-right font-mono font-bold text-text tabular-nums">
-                    {formatNumber(totalManhours, 1)}
-                  </td>
-                  <td className="py-2.5 text-right font-mono font-bold text-accent tabular-nums">
-                    {formatNumber(totalManDays, 1)}
-                  </td>
-                  <td></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      {/* ADAM-SAAT DETAY (yeni) */}
+      <div className="mb-6 animate-slide-up">
+        <ManhourDetailWidget />
+      </div>
 
-      {/* PROCUREMENT + FATURALANDIRMA + LOOKAHEAD-15 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
+      {/* FATURALANDIRMA DETAY (yeni) */}
+      <div className="mb-6 animate-slide-up">
+        <BillingDetailWidget />
+      </div>
+
+      {/* PROCUREMENT + LOOKAHEAD-15 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 animate-slide-up">
         <Card>
           <div className="flex items-center justify-between mb-3">
             <CardTitle className="mb-0">
@@ -630,30 +555,6 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-          )}
-        </Card>
-
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <CardTitle className="mb-0">
-              <Receipt size={14} className="text-accent" />
-              Faturalandırma Durumu
-            </CardTitle>
-            <Link href="/billing" className="text-[11px] text-accent font-bold hover:underline">
-              Tümü →
-            </Link>
-          </div>
-          {billingTotal > 0 ? (
-            <>
-              <Donut
-                data={donutData}
-                centerLabel={`${billingPaidPct.toFixed(0)}%`}
-                centerSub="ÖDENEN"
-              />
-              <DonutLegend data={donutData} />
-            </>
-          ) : (
-            <p className="text-sm text-text3 py-12 text-center">Henüz fatura kaydı yok.</p>
           )}
         </Card>
 

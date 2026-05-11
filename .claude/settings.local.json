@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(> \"C:\\\\\\\\Users\\\\\\\\OZAN~1.SEY\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\c--Projects-Proje-Takip\\\\\\\\7310b2cd-8697-40ac-9b9d-4ebb0fb54ebd\\\\\\\\tasks\\\\\\\\bcllg31p3.output\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000__TRACKED_VAR__)",
+      "Bash(grep -aE \"Error:|error:|Module not found|Uncaught|Maximum update\" \"C:\\\\\\\\Users\\\\\\\\OZAN~1.SEY\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\c--Projects-Proje-Takip\\\\\\\\7310b2cd-8697-40ac-9b9d-4ebb0fb54ebd\\\\\\\\tasks\\\\\\\\bcllg31p3.output\")"
+    ]
+  }
+}

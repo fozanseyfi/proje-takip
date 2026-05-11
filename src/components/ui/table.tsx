@@ -35,7 +35,8 @@ export function TH({
   return (
     <th
       className={cn(
-        "bg-bg2 text-left px-4 py-3 text-text2 text-[11px] uppercase tracking-wider font-semibold border-b border-border whitespace-nowrap",
+        "sticky top-16 z-20 bg-bg2 text-left px-4 py-3 text-text2 text-[11px] uppercase tracking-wider font-semibold border-b border-border whitespace-nowrap",
+        "shadow-[0_1px_0_0_var(--border)]",
         className
       )}
       {...props}
