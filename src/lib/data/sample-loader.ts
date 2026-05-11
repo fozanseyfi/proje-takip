@@ -447,7 +447,11 @@ function buildDailyReports(project: Project, userId: string, rng: () => number):
 // ============================================================
 function buildProcurement(project: Project): ProcurementItem[] {
   const start = new Date(project.startDate);
-  const list: Omit<ProcurementItem, "id" | "projectId">[] = [
+  const day = (n: number) => toISODate(addDays(start, n));
+
+  type Item = Omit<ProcurementItem, "id" | "projectId">;
+  const list: Item[] = [
+    // 1. Solar Panel — TESLİM (kritik)
     {
       category: "Solar Panel",
       material: "JA Solar JAM72S30 540W",
@@ -457,10 +461,20 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 110,
       currency: "USD",
       status: "teslim",
-      orderDate: toISODate(addDays(start, 15)),
-      expectedDate: toISODate(addDays(start, 45)),
-      deliveredDate: toISODate(addDays(start, 44)),
+      isCritical: true,
+      rfqStartDate: day(1),
+      rfqEndDate: day(10),
+      plannedPoDate: day(15),
+      plannedExwDate: day(35),
+      plannedDeliveryDate: day(45),
+      actualPoDate: day(15),
+      actualExwDate: day(36),
+      actualDeliveredDate: day(44),
+      actualQuantity: 20000,
+      actualUnitPrice: 112,
+      actualCurrency: "USD",
     },
+    // 2. İnverter — TESLİM (kritik)
     {
       category: "İnverter",
       material: "Huawei SUN2000-215KTL",
@@ -470,10 +484,20 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 9_000,
       currency: "USD",
       status: "teslim",
-      orderDate: toISODate(addDays(start, 18)),
-      expectedDate: toISODate(addDays(start, 48)),
-      deliveredDate: toISODate(addDays(start, 50)),
+      isCritical: true,
+      rfqStartDate: day(3),
+      rfqEndDate: day(13),
+      plannedPoDate: day(18),
+      plannedExwDate: day(40),
+      plannedDeliveryDate: day(48),
+      actualPoDate: day(20),
+      actualExwDate: day(42),
+      actualDeliveredDate: day(50),
+      actualQuantity: 50,
+      actualUnitPrice: 8_900,
+      actualCurrency: "USD",
     },
+    // 3. Taşıyıcı Sistem — TESLİM
     {
       category: "Taşıyıcı Sistem",
       material: "Galvanizli sabit eğimli konstrüksiyon (kolon+kiriş+aşık)",
@@ -483,10 +507,19 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 25,
       currency: "USD",
       status: "teslim",
-      orderDate: toISODate(addDays(start, 15)),
-      expectedDate: toISODate(addDays(start, 40)),
-      deliveredDate: toISODate(addDays(start, 42)),
+      rfqStartDate: day(1),
+      rfqEndDate: day(10),
+      plannedPoDate: day(15),
+      plannedExwDate: day(32),
+      plannedDeliveryDate: day(40),
+      actualPoDate: day(16),
+      actualExwDate: day(34),
+      actualDeliveredDate: day(42),
+      actualQuantity: 24000,
+      actualUnitPrice: 25.5,
+      actualCurrency: "USD",
     },
+    // 4. DC Kablo — TESLİM
     {
       category: "DC Kablo",
       material: "DC Solar kablo 1500V 6mm² + 4mm²",
@@ -496,10 +529,19 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 3,
       currency: "USD",
       status: "teslim",
-      orderDate: toISODate(addDays(start, 20)),
-      expectedDate: toISODate(addDays(start, 50)),
-      deliveredDate: toISODate(addDays(start, 49)),
+      rfqStartDate: day(5),
+      rfqEndDate: day(15),
+      plannedPoDate: day(20),
+      plannedExwDate: day(42),
+      plannedDeliveryDate: day(50),
+      actualPoDate: day(22),
+      actualExwDate: day(41),
+      actualDeliveredDate: day(49),
+      actualQuantity: 60000,
+      actualUnitPrice: 3,
+      actualCurrency: "USD",
     },
+    // 5. Trafo — YOLDA (kritik)
     {
       category: "Trafo",
       material: "1.6 MVA Yağlı Dağıtım Trafosu",
@@ -509,9 +551,16 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 35_000,
       currency: "USD",
       status: "yolda",
-      orderDate: toISODate(addDays(start, 25)),
-      expectedDate: toISODate(addDays(start, 75)),
+      isCritical: true,
+      rfqStartDate: day(10),
+      rfqEndDate: day(20),
+      plannedPoDate: day(25),
+      plannedExwDate: day(65),
+      plannedDeliveryDate: day(75),
+      actualPoDate: day(26),
+      actualExwDate: day(66),
     },
+    // 6. OG Hücre — YOLDA (kritik)
     {
       category: "OG Hücre",
       material: "36kV SF6 OG Hücre",
@@ -521,9 +570,16 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 4_000,
       currency: "USD",
       status: "yolda",
-      orderDate: toISODate(addDays(start, 25)),
-      expectedDate: toISODate(addDays(start, 80)),
+      isCritical: true,
+      rfqStartDate: day(10),
+      rfqEndDate: day(20),
+      plannedPoDate: day(25),
+      plannedExwDate: day(70),
+      plannedDeliveryDate: day(80),
+      actualPoDate: day(27),
+      actualExwDate: day(71),
     },
+    // 7. AC/MV Kablo — SİPARİŞ
     {
       category: "AC/MV Kablo",
       material: "33kV NA2XSY 3×95 mm² MV Kablo",
@@ -533,9 +589,14 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 22,
       currency: "USD",
       status: "siparis",
-      orderDate: toISODate(addDays(start, 30)),
-      expectedDate: toISODate(addDays(start, 70)),
+      rfqStartDate: day(15),
+      rfqEndDate: day(25),
+      plannedPoDate: day(30),
+      plannedExwDate: day(60),
+      plannedDeliveryDate: day(70),
+      actualPoDate: day(31),
     },
+    // 8. Pano — SİPARİŞ
     {
       category: "Pano",
       material: "AC Birleşme Pano + DC Birleşme Pano",
@@ -545,8 +606,12 @@ function buildProcurement(project: Project): ProcurementItem[] {
       unitPrice: 2_800,
       currency: "USD",
       status: "siparis",
-      orderDate: toISODate(addDays(start, 30)),
-      expectedDate: toISODate(addDays(start, 65)),
+      rfqStartDate: day(15),
+      rfqEndDate: day(25),
+      plannedPoDate: day(30),
+      plannedExwDate: day(55),
+      plannedDeliveryDate: day(65),
+      actualPoDate: day(32),
     },
   ];
   return list.map((it) => ({ id: uid(), projectId: project.id, ...it }));
@@ -557,15 +622,20 @@ function buildProcurement(project: Project): ProcurementItem[] {
 // ============================================================
 function buildLookahead(project: Project): LookaheadItem[] {
   const today = new Date(project.reportDate);
-  const list: Array<{ task: string; daysAhead: number; priority: Priority; owner: string; notes?: string }> = [
-    { task: "Trafo merkezi temel beton dökümü", daysAhead: 2, priority: "high", owner: "Hasan Yılmaz" },
-    { task: "Pano sevkiyat tesellümü", daysAhead: 3, priority: "high", owner: "Mehmet Demir" },
-    { task: "Telçit örme batı bölümü bitirilmesi", daysAhead: 5, priority: "medium", owner: "Selim Aksoy" },
-    { task: "DC kablo çekimi blok-2 tamamlanması", daysAhead: 7, priority: "high", owner: "Mehmet Demir" },
-    { task: "İşveren saha denetimi", daysAhead: 8, priority: "high", owner: "Şantiye Şefi" },
-    { task: "Trafo montaj çalışması başlangıcı", daysAhead: 10, priority: "critical", owner: "Murat Yıldız" },
-    { task: "OG hücre devreye alma testi", daysAhead: 11, priority: "critical", owner: "Mehmet Demir", notes: "Kalibrasyon ekipmanı önceden hazırlanmalı" },
-    { task: "DC sistem yalıtım direnci testi", daysAhead: 14, priority: "critical", owner: "Mehmet Demir" },
+  type LK = "kritik_is" | "claim" | "tutanak" | "yazisma" | "ihbar";
+  const list: Array<{ task: string; daysAhead: number; priority: Priority; owner: string; notes?: string; kind: LK }> = [
+    { task: "Trafo merkezi temel beton dökümü", daysAhead: 2, priority: "high", owner: "Hasan Yılmaz", kind: "kritik_is" },
+    { task: "Pano sevkiyat tesellümü", daysAhead: 3, priority: "high", owner: "Mehmet Demir", kind: "kritik_is" },
+    { task: "Hava muhalefeti — 2 gün iş kaybı tutanağı", daysAhead: -2, priority: "medium", owner: "Şantiye Şefi", kind: "tutanak", notes: "16-17 Nisan günleri yağmur nedeniyle saha çalışması durdu" },
+    { task: "Telçit örme batı bölümü bitirilmesi", daysAhead: 5, priority: "medium", owner: "Selim Aksoy", kind: "kritik_is" },
+    { task: "İşverene gönderilecek hakediş ekibi yazısı", daysAhead: 1, priority: "medium", owner: "Şantiye Şefi", kind: "yazisma" },
+    { task: "DC kablo çekimi blok-2 tamamlanması", daysAhead: 7, priority: "high", owner: "Mehmet Demir", kind: "kritik_is" },
+    { task: "İşveren saha denetimi", daysAhead: 8, priority: "high", owner: "Şantiye Şefi", kind: "kritik_is" },
+    { task: "Saha tesviye fazla maliyet claim'i", daysAhead: 4, priority: "high", owner: "Şantiye Şefi", kind: "claim", notes: "Beklenmedik kayalık zemin — 18.000 m³ ek hafriyat" },
+    { task: "Trafo montaj çalışması başlangıcı", daysAhead: 10, priority: "critical", owner: "Murat Yıldız", kind: "kritik_is" },
+    { task: "Süre uzatımı ihbarı (15 günlük)", daysAhead: 6, priority: "high", owner: "Şantiye Şefi", kind: "ihbar", notes: "Hava muhalefeti + tedarikçi gecikmesi nedeniyle" },
+    { task: "OG hücre devreye alma testi", daysAhead: 11, priority: "critical", owner: "Mehmet Demir", kind: "kritik_is", notes: "Kalibrasyon ekipmanı önceden hazırlanmalı" },
+    { task: "DC sistem yalıtım direnci testi", daysAhead: 14, priority: "critical", owner: "Mehmet Demir", kind: "kritik_is" },
   ];
   return list.map((it) => ({
     id: uid(),
@@ -576,6 +646,7 @@ function buildLookahead(project: Project): LookaheadItem[] {
     owner: it.owner,
     done: false,
     notes: it.notes,
+    kind: it.kind,
   }));
 }
 

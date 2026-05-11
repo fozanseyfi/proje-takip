@@ -17,12 +17,14 @@ import {
   Telescope,
   ListChecks,
   ShoppingCart,
-  Receipt,
   Camera,
-  Clock,
   AlertTriangle,
   FileText,
   Building2,
+  Star,
+  ChevronDown,
+  Receipt,
+  Clock,
 } from "lucide-react";
 import {
   useStore,
@@ -398,73 +400,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* İMALAT BÖLÜM ÖZETİ */}
-      <Card className="mb-6 animate-slide-up">
-        <CardTitle>
-          <ListChecks size={14} className="text-accent" />
-          İmalat Bölüm Özeti
-        </CardTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b border-border">
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3">Bölüm</th>
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Kalem</th>
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Plan</th>
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">Gerçek</th>
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3">İlerleme</th>
-                <th className="pb-2 text-[10px] uppercase tracking-wider font-bold text-text3 text-right">SPI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.sections.map((sec) => {
-                const spiL = spiLevel(sec.spi);
-                return (
-                  <tr key={sec.code} className="hover:bg-bg2/40">
-                    <td className="py-2.5">
-                      <span className="font-mono text-xs text-text3 mr-2">{sec.code}</span>
-                      <span className="font-semibold">{sec.name}</span>
-                    </td>
-                    <td className="py-2.5 text-right text-text2 font-mono text-xs tabular-nums">
-                      {sec.leafCount}
-                    </td>
-                    <td className="py-2.5 text-right text-planned font-mono font-semibold tabular-nums">
-                      {(sec.planPct * 100).toFixed(1)}%
-                    </td>
-                    <td className="py-2.5 text-right text-realized font-mono font-semibold tabular-nums">
-                      {(sec.realPct * 100).toFixed(1)}%
-                    </td>
-                    <td className="py-2.5">
-                      <div className="relative h-2 bg-bg3 rounded-full overflow-hidden w-32">
-                        <div
-                          className="absolute h-full bg-planned/40 rounded-full"
-                          style={{ width: `${sec.planPct * 100}%` }}
-                        />
-                        <div
-                          className="absolute h-full bg-realized rounded-full"
-                          style={{ width: `${sec.realPct * 100}%` }}
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2.5 text-right">
-                      {sec.spi == null ? (
-                        <span className="text-text3 text-xs">—</span>
-                      ) : (
-                        <Badge variant={spiL === "good" ? "green" : spiL === "warn" ? "yellow" : "red"}>
-                          {sec.spi.toFixed(3)}
-                        </Badge>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* HEADCOUNT + TRENDS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
+      {/* HEADCOUNT + TRENDS + İMALAT ÖZETİ (4-col) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 animate-slide-up">
         <Card>
           <CardTitle>
             <Users size={14} className="text-accent" />
@@ -498,121 +435,209 @@ export default function DashboardPage() {
             <EmptyChart label="Trend için yeterli veri yok" href="/machines" linkLabel="Puantaja git" small />
           )}
         </Card>
+        <Card className="!p-0 overflow-hidden">
+          <div className="px-5 py-3 border-b border-border">
+            <CardTitle className="mb-0">
+              <ListChecks size={14} className="text-accent" />
+              İmalat Bölüm Özeti
+            </CardTitle>
+          </div>
+          <div className="max-h-[220px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {stats.sections.map((sec) => {
+                  const spiL = spiLevel(sec.spi);
+                  return (
+                    <tr key={sec.code} className="border-b border-border last:border-b-0 hover:bg-bg2/40">
+                      <td className="px-3 py-2 align-middle">
+                        <div className="font-mono text-[10px] text-text3 leading-tight">{sec.code}</div>
+                        <div className="text-xs font-semibold truncate max-w-[10rem] leading-tight">{sec.name}</div>
+                      </td>
+                      <td className="px-2 py-2 align-middle">
+                        <div className="relative h-1.5 bg-bg3 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-planned/40 rounded-full" style={{ width: `${sec.planPct * 100}%` }} />
+                          <div className="absolute h-full bg-realized rounded-full" style={{ width: `${sec.realPct * 100}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[9px] mt-0.5 font-mono tabular-nums">
+                          <span className="text-planned">{(sec.planPct * 100).toFixed(0)}%</span>
+                          <span className="text-realized">{(sec.realPct * 100).toFixed(0)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-right align-middle">
+                        {sec.spi == null ? (
+                          <span className="text-text3 text-[10px]">—</span>
+                        ) : (
+                          <span className={cn("font-mono text-[10px] font-bold",
+                            spiL === "good" ? "text-green" : spiL === "warn" ? "text-yellow" : "text-red"
+                          )}>
+                            {sec.spi.toFixed(2)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       </div>
 
-      {/* ADAM-SAAT DETAY (yeni) */}
-      <div className="mb-6 animate-slide-up">
+      {/* ADAM-SAAT DETAY — collapsible */}
+      <CollapsibleSection title="Adam-Saat Analiz Tablosu" icon={<Clock size={14} className="text-accent" />}>
         <ManhourDetailWidget />
-      </div>
+      </CollapsibleSection>
 
-      {/* FATURALANDIRMA DETAY (yeni) */}
-      <div className="mb-6 animate-slide-up">
+      {/* FATURALANDIRMA DETAY — collapsible */}
+      <CollapsibleSection title="Faturalandırma Durumu" icon={<Receipt size={14} className="text-accent" />}>
         <BillingDetailWidget />
-      </div>
+      </CollapsibleSection>
 
-      {/* PROCUREMENT + LOOKAHEAD-15 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 animate-slide-up">
-        <Card>
-          <div className="flex items-center justify-between mb-3">
+      {/* PROCUREMENT + LOOKAHEAD-15 — collapsible */}
+      <CollapsibleSection
+        title="Procurement Follow Up & Kritik · Tutanak · Claim"
+        icon={<ShoppingCart size={14} className="text-accent" />}
+      >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-slide-up">
+        <Card className="!p-0 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
             <CardTitle className="mb-0">
               <ShoppingCart size={14} className="text-accent" />
-              Procurement Takibi
+              Procurement Follow Up
+              <Badge variant="gray" className="ml-1">{procFollow.length}</Badge>
             </CardTitle>
             <Link href="/procurement" className="text-[11px] text-accent font-bold hover:underline">
-              Tümü →
+              Detay →
             </Link>
           </div>
           {procFollow.length === 0 ? (
-            <p className="text-sm text-text3 py-4 text-center">Yolda/siparişte malzeme yok.</p>
+            <p className="text-xs text-text3 py-6 text-center">Yaklaşan veya kritik malzeme yok.</p>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {procFollow.slice(0, 8).map((p) => (
-                <div
-                  key={p.item.id}
-                  className={cn(
-                    "flex items-start justify-between gap-2 p-2.5 rounded-lg border",
-                    p.overdue ? "border-red/20 bg-red/5" : "border-border bg-white"
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm truncate">{p.item.material}</div>
-                    <div className="text-[11px] text-text3 truncate">
-                      {p.item.category} · {p.item.supplier ?? "—"}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <Badge variant={p.item.status === "yolda" ? "blue" : "yellow"}>
-                      {p.item.status}
-                    </Badge>
-                    <div className={cn("text-[10px] mt-0.5 font-mono", p.overdue ? "text-red" : "text-text3")}>
-                      {p.daysUntilExpected == null
-                        ? "tarih yok"
-                        : p.overdue
-                        ? `${-p.daysUntilExpected}g gecikme`
-                        : `${p.daysUntilExpected}g kaldı`}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="max-h-[420px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-bg2 border-b border-border">
+                    <th className="px-3 py-2 text-left text-[9px] uppercase tracking-wider font-bold text-text3 w-6"></th>
+                    <th className="px-3 py-2 text-left text-[9px] uppercase tracking-wider font-bold text-text3">Malzeme</th>
+                    <th className="px-2 py-2 text-center text-[9px] uppercase tracking-wider font-bold text-text3">PO</th>
+                    <th className="px-2 py-2 text-center text-[9px] uppercase tracking-wider font-bold text-text3">EXW</th>
+                    <th className="px-2 py-2 text-center text-[9px] uppercase tracking-wider font-bold text-text3">Teslim</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {procFollow.slice(0, 12).map((p) => (
+                    <tr
+                      key={p.item.id}
+                      className={cn(
+                        "border-b border-border last:border-b-0 hover:bg-bg2/40",
+                        p.isCritical && "bg-yellow/3"
+                      )}
+                    >
+                      <td className="px-3 py-2 align-middle">
+                        {p.isCritical && (
+                          <span title="Kritik">
+                            <Star size={11} className="fill-yellow text-yellow" />
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <div className="font-semibold text-text truncate max-w-[14rem]">{p.item.material}</div>
+                        <div className="text-[10px] text-text3 truncate">{p.item.supplier ?? "—"}</div>
+                      </td>
+                      {p.milestones.map((m) => {
+                        const colorClass = m.isCompleted
+                          ? "text-green"
+                          : m.isOverdue
+                          ? "text-red font-bold"
+                          : m.isUpcoming
+                          ? "text-yellow"
+                          : "text-text3";
+                        const display = m.isCompleted && m.actualDate ? `✓ ${formatDate(m.actualDate).slice(0, 5)}` : m.plannedDate ? formatDate(m.plannedDate).slice(0, 5) : "—";
+                        const sub = !m.isCompleted && m.daysFromToday != null
+                          ? (m.daysFromToday < 0 ? `${-m.daysFromToday}g gec` : `${m.daysFromToday}g`)
+                          : null;
+                        return (
+                          <td
+                            key={m.kind}
+                            className="px-2 py-2 text-center align-middle"
+                            title={m.plannedDate ? `Plan: ${formatDate(m.plannedDate)}${m.actualDate ? ` · Gerç: ${formatDate(m.actualDate)}` : ""}` : "—"}
+                          >
+                            <div className={cn("font-mono text-[10px] tabular-nums whitespace-nowrap", colorClass)}>
+                              {display}
+                            </div>
+                            {sub && (
+                              <div className={cn("text-[9px] font-mono", colorClass, "opacity-80")}>{sub}</div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
 
-        <Card>
-          <div className="flex items-center justify-between mb-3">
+        <Card className="!p-0 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
             <CardTitle className="mb-0">
               <Telescope size={14} className="text-accent" />
-              15 Günün Kritik İşleri
+              Kritik & Tutanak
+              <Badge variant="gray" className="ml-1">{lookahead15.length}</Badge>
             </CardTitle>
             <Link href="/lookahead" className="text-[11px] text-accent font-bold hover:underline">
-              Tümü →
+              Detay →
             </Link>
           </div>
           {lookahead15.length === 0 ? (
-            <p className="text-sm text-text3 py-4 text-center">15 gün içinde kritik iş yok.</p>
+            <p className="text-xs text-text3 py-6 text-center">15 gün içinde aksiyon yok.</p>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {lookahead15.slice(0, 8).map((l) => {
-                const days = daysBetween(today, l.date);
-                const overdue = days < 0;
-                return (
-                  <div
-                    key={l.id}
-                    className={cn(
-                      "flex items-start justify-between gap-2 p-2.5 rounded-lg border",
-                      overdue ? "border-red/20 bg-red/5" : "border-border bg-white"
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-sm truncate">{l.task}</div>
-                      <div className="text-[11px] text-text3 mt-0.5">
-                        {formatDate(l.date)}
-                        {l.owner && <span> · {l.owner}</span>}
-                      </div>
-                    </div>
-                    <Badge
-                      variant={
-                        l.priority === "critical"
-                          ? "red"
-                          : l.priority === "high"
-                          ? "yellow"
-                          : l.priority === "medium"
-                          ? "blue"
-                          : "gray"
-                      }
-                    >
-                      {overdue ? `${-days}g gecikme` : `${days}g`}
-                    </Badge>
-                  </div>
-                );
-              })}
+            <div className="max-h-[420px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <tbody>
+                  {lookahead15.slice(0, 14).map((l) => {
+                    const days = daysBetween(today, l.date);
+                    const overdue = days < 0;
+                    const kind = l.kind ?? "kritik_is";
+                    return (
+                      <tr key={l.id} className={cn("border-b border-border last:border-b-0 hover:bg-bg2/40", overdue && "bg-red/3")}>
+                        <td className="px-2 py-1.5 align-middle w-[5.5rem]">
+                          <KindPill kind={kind} />
+                        </td>
+                        <td className="px-2 py-1.5 align-middle">
+                          <div className="font-medium text-text leading-tight truncate max-w-[16rem]">{l.task}</div>
+                          {l.owner && <div className="text-[10px] text-text3 leading-tight">{l.owner}</div>}
+                        </td>
+                        <td className="px-2 py-1.5 align-middle text-right whitespace-nowrap">
+                          <div className={cn("text-[10px] font-mono font-bold tabular-nums", overdue ? "text-red" : "text-text3")}>
+                            {formatDate(l.date).slice(0, 5)}
+                          </div>
+                          <Badge
+                            variant={
+                              l.priority === "critical" ? "red" : l.priority === "high" ? "yellow" : l.priority === "medium" ? "blue" : "gray"
+                            }
+                          >
+                            {overdue ? `+${-days}g` : `${days}g`}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>
       </div>
+      </CollapsibleSection>
 
-      {/* AÇIK AKSİYONLAR + SON 5 GÜN FAALİYET ÖZETİ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 animate-slide-up">
+      {/* AÇIK AKSİYONLAR + SON 5 GÜN FAALİYET ÖZETİ — collapsible */}
+      <CollapsibleSection
+        title="Açık Aksiyonlar & Son 5 Gün Faaliyet"
+        icon={<AlertTriangle size={14} className="text-yellow" />}
+      >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-slide-up">
         <Card>
           <div className="flex items-center justify-between mb-3">
             <CardTitle className="mb-0">
@@ -680,9 +705,11 @@ export default function DashboardPage() {
           )}
         </Card>
       </div>
+      </CollapsibleSection>
 
-      {/* DRONE FOTO + PROJE KÜNYESİ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
+      {/* DRONE FOTO + PROJE KÜNYESİ — collapsible */}
+      <CollapsibleSection title="Saha Fotoğrafı & Proje Künyesi" icon={<Camera size={14} className="text-accent" />}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-slide-up">
         <Card className="lg:col-span-2 !p-0 overflow-hidden">
           <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <CardTitle className="mb-0">
@@ -746,7 +773,39 @@ export default function DashboardPage() {
           </dl>
         </Card>
       </div>
+      </CollapsibleSection>
     </>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  icon,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group mb-6 animate-slide-up"
+    >
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <div className="flex items-center gap-3 px-5 py-3 bg-white border border-border rounded-xl hover:border-text3 transition-colors shadow-soft">
+          {icon}
+          <span className="font-display font-bold text-sm text-text tracking-tight">{title}</span>
+          <ChevronDown
+            size={16}
+            className="ml-auto text-text3 transition-transform group-open:rotate-180"
+          />
+        </div>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 
@@ -859,6 +918,22 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-[10px] uppercase tracking-wider font-bold text-text3 mb-0.5">{label}</dt>
       <dd className="text-text font-semibold text-sm">{value}</dd>
     </div>
+  );
+}
+
+const KIND_STYLES: Record<string, { label: string; bg: string; text: string }> = {
+  kritik_is: { label: "Kritik İş", bg: "bg-red/10", text: "text-red" },
+  claim:     { label: "Claim",     bg: "bg-purple/10", text: "text-purple" },
+  tutanak:   { label: "Tutanak",   bg: "bg-blue/10", text: "text-blue" },
+  yazisma:   { label: "Yazışma",   bg: "bg-accent/10", text: "text-accent" },
+  ihbar:     { label: "İhbar",     bg: "bg-yellow/10", text: "text-yellow" },
+};
+function KindPill({ kind }: { kind: string }) {
+  const s = KIND_STYLES[kind] || KIND_STYLES.kritik_is;
+  return (
+    <span className={cn("inline-block text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded whitespace-nowrap", s.bg, s.text)}>
+      {s.label}
+    </span>
   );
 }
 

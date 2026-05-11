@@ -389,31 +389,95 @@ export function billingSummary(items: BillingItem[]): BillingSummary[] {
 }
 
 // ============================================================
-// Procurement follow-up: yolda + gecikenler
+// Procurement follow-up: kritik + yaklaşan + gecikme
 // ============================================================
+
+export type ProcMilestone = "po" | "exw" | "delivery";
+
+export interface ProcurementMilestone {
+  kind: ProcMilestone;
+  label: string;
+  plannedDate?: string;
+  actualDate?: string;
+  daysFromToday: number | null;   // negatif: geçmiş, pozitif: gelecek
+  isCompleted: boolean;
+  isOverdue: boolean;             // planlandı, geçti ama gerçekleşmedi
+  isUpcoming: boolean;            // önümüzdeki 30 gün içinde planlanan
+}
 
 export interface ProcurementFollowItem {
   item: ProcurementItem;
-  daysUntilExpected: number | null;
-  overdue: boolean;
+  isCritical: boolean;
+  milestones: ProcurementMilestone[];
+  /** Bir sonraki action milestone (en yakın overdue veya upcoming) */
+  nextMilestone?: ProcurementMilestone;
+  hasOverdue: boolean;
 }
 
+function daysBetweenISO(a: string, b: string): number {
+  return Math.ceil((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
+}
+
+/**
+ * Yeni follow-up: status'a değil, milestone (PO/EXW/Teslim) bazlı çalışır.
+ * Kritik bayraklı her ürün her zaman dahil. Diğerleri sadece "yolda/siparis"
+ * + yaklaşan/geciken milestone'a sahipse dahil.
+ */
 export function procurementFollowup(
   items: ProcurementItem[],
-  todayISO: string
+  todayISO: string,
+  upcomingWindowDays = 30
 ): ProcurementFollowItem[] {
-  const today = new Date(todayISO);
-  return items
-    .filter((p) => p.status === "siparis" || p.status === "yolda")
-    .map((item) => {
-      if (!item.expectedDate) return { item, daysUntilExpected: null, overdue: false };
-      const exp = new Date(item.expectedDate);
-      const days = Math.ceil((exp.getTime() - today.getTime()) / 86400000);
-      return { item, daysUntilExpected: days, overdue: days < 0 };
-    })
-    .sort((a, b) => {
-      const ad = a.daysUntilExpected ?? 9999;
-      const bd = b.daysUntilExpected ?? 9999;
-      return ad - bd;
+  const today = todayISO;
+  const result: ProcurementFollowItem[] = [];
+
+  for (const item of items) {
+    // Legacy fallback: eski sample data'da plannedPoDate vs. olabilir
+    const plannedPo = item.plannedPoDate ?? item.orderDate;
+    const plannedExw = item.plannedExwDate;
+    const plannedDelivery = item.plannedDeliveryDate ?? item.expectedDate;
+    const actualPo = item.actualPoDate;
+    const actualExw = item.actualExwDate;
+    const actualDelivery = item.actualDeliveredDate ?? item.deliveredDate;
+
+    const rawMilestones: Array<{ kind: ProcMilestone; label: string; plannedDate?: string; actualDate?: string }> = [
+      { kind: "po", label: "PO", plannedDate: plannedPo, actualDate: actualPo },
+      { kind: "exw", label: "EXW", plannedDate: plannedExw, actualDate: actualExw },
+      { kind: "delivery", label: "Teslim", plannedDate: plannedDelivery, actualDate: actualDelivery },
+    ];
+    const ms: ProcurementMilestone[] = rawMilestones.map((m) => {
+      const isCompleted = !!m.actualDate;
+      const daysFromToday = m.plannedDate ? daysBetweenISO(today, m.plannedDate) : null;
+      const isOverdue = !isCompleted && m.plannedDate ? m.plannedDate < today : false;
+      const isUpcoming = !isCompleted && daysFromToday != null && daysFromToday >= 0 && daysFromToday <= upcomingWindowDays;
+      return { ...m, daysFromToday, isCompleted, isOverdue, isUpcoming };
     });
+
+    const hasOverdue = ms.some((m) => m.isOverdue);
+    const hasUpcoming = ms.some((m) => m.isUpcoming);
+    const isCritical = !!item.isCritical;
+
+    // Dahil etme kriteri: kritik VEYA yaklaşan/geciken milestone'u var
+    if (!isCritical && !hasOverdue && !hasUpcoming) continue;
+
+    // Sonraki milestone — önce overdue (en eski geciken), sonra upcoming (en yakın)
+    const overdueMs = ms.filter((m) => m.isOverdue).sort((a, b) => (a.daysFromToday ?? 0) - (b.daysFromToday ?? 0));
+    const upcomingMs = ms.filter((m) => m.isUpcoming && !m.isOverdue).sort((a, b) => (a.daysFromToday ?? 0) - (b.daysFromToday ?? 0));
+    const nextMilestone = overdueMs[0] ?? upcomingMs[0];
+
+    result.push({ item, isCritical, milestones: ms, nextMilestone, hasOverdue });
+  }
+
+  // Sıralama: önce kritik+gecikme, sonra kritik+yaklaşan, sonra normal gecikme, normal yaklaşan
+  return result.sort((a, b) => {
+    const score = (r: ProcurementFollowItem) => {
+      let s = 0;
+      if (r.isCritical) s += 1000;
+      if (r.hasOverdue) s += 500;
+      const ms = r.nextMilestone?.daysFromToday;
+      if (ms != null) s -= ms;  // daha yakın olan üstte
+      return s;
+    };
+    return score(b) - score(a);
+  });
 }

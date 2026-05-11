@@ -51,7 +51,7 @@ export const navGroups: NavGroup[] = [
       { href: "/wbs", label: "WBS Yapısı", icon: FolderTree },
       { href: "/planning", label: "Planlama", icon: CalendarDays },
       { href: "/realization", label: "Gerçekleşme", icon: CheckCircle2, mobile: true },
-      { href: "/lookahead", label: "15-Gün Kritik", icon: AlertTriangle },
+      { href: "/lookahead", label: "Kritik & Tutanak", icon: AlertTriangle },
     ],
   },
   {

@@ -208,10 +208,46 @@ export interface ProcurementItem {
   unitPrice: number;
   currency: Currency;
   status: "talep" | "siparis" | "yolda" | "teslim" | "iade";
-  orderDate?: string;
-  expectedDate?: string;
-  deliveredDate?: string;
   notes?: string;
+
+  /** Kritik malzeme bayrağı — dashboard procurement follow-up'ta sürekli görünür */
+  isCritical?: boolean;
+
+  // === Planlanan tarihler ===
+  /** Teklif Toplama Başlangıç (RFQ start) */
+  rfqStartDate?: string;
+  /** Teklif Toplama Bitiş (RFQ end / vendor selection) */
+  rfqEndDate?: string;
+  /** Planlanan Satın Alma Siparişi (PO) tarihi */
+  plannedPoDate?: string;
+  /** Planlanan EXW Tarihi (fabrika çıkış / hazır olma) */
+  plannedExwDate?: string;
+  /** Planlanan Teslimat Tarihi (sahaya geliş) */
+  plannedDeliveryDate?: string;
+
+  // === Gerçekleşen ===
+  /** Gerçek PO tarihi */
+  actualPoDate?: string;
+  /** Gerçek EXW tarihi */
+  actualExwDate?: string;
+  /** Gerçek teslim tarihi */
+  actualDeliveredDate?: string;
+  /** Gerçek miktar (planın altında/üstünde olabilir) */
+  actualQuantity?: number;
+  /** Gerçek birim fiyat */
+  actualUnitPrice?: number;
+  /** Gerçek para birimi (genelde aynı, kur değişebilir) */
+  actualCurrency?: Currency;
+  /** Gerçekleşme notu */
+  actualNotes?: string;
+
+  // === Legacy (eski sample data için) — UI'da yenilere fallback yapılır ===
+  /** @deprecated plannedPoDate kullanın */
+  orderDate?: string;
+  /** @deprecated plannedDeliveryDate kullanın */
+  expectedDate?: string;
+  /** @deprecated actualDeliveredDate kullanın */
+  deliveredDate?: string;
 }
 
 /**
@@ -285,6 +321,8 @@ export interface BudgetActual {
   recordedAt: string;
 }
 
+export type LookaheadKind = "kritik_is" | "claim" | "tutanak" | "yazisma" | "ihbar";
+
 export interface LookaheadItem {
   id: string;
   projectId: string;
@@ -294,6 +332,8 @@ export interface LookaheadItem {
   owner?: string;
   done: boolean;
   notes?: string;
+  /** Tip: kritik iş / claim / tutanak / yazışma / ihbar */
+  kind?: LookaheadKind;
 }
 
 export interface AuditEntry {
