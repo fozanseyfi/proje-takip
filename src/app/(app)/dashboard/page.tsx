@@ -616,7 +616,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* HEADCOUNT + TRENDS + İMALAT ÖZETİ (4-col) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 animate-slide-up items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 animate-slide-up items-stretch">
         <SectionCard
           title="Personel Headcount · Son 7 Gün"
           icon={<Users size={18} />}
@@ -674,36 +674,27 @@ export default function DashboardPage() {
               return (
                 <div
                   key={sec.code}
-                  className="px-3 py-2 border-b border-border last:border-b-0 hover:bg-bg2/40 transition-colors"
+                  className="flex items-center gap-2 px-3 py-1.5 border-b border-border last:border-b-0 hover:bg-bg2/40 transition-colors"
                 >
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="font-mono text-[10px] text-text3 shrink-0">{sec.code}</span>
-                    <span className="text-[11px] font-semibold text-text truncate flex-1">{sec.name}</span>
-                    {sec.spi != null && (
-                      <span
-                        className={cn(
-                          "font-mono text-[10px] font-bold tabular-nums shrink-0",
-                          spiL === "good" ? "text-green" : spiL === "warn" ? "text-yellow" : "text-red"
-                        )}
-                      >
-                        {sec.spi.toFixed(2)}
-                      </span>
-                    )}
+                  <span className="font-mono text-[10px] text-text3 shrink-0 w-7">{sec.code}</span>
+                  <span className="text-[11px] font-semibold text-text truncate min-w-0 flex-1">{sec.name}</span>
+                  <div className="relative h-1.5 w-16 sm:w-20 bg-bg3 rounded-full overflow-hidden shrink-0">
+                    <div className="absolute h-full bg-planned/40 rounded-full" style={{ width: `${planP}%` }} />
+                    <div className="absolute h-full bg-realized rounded-full" style={{ width: `${realP}%` }} />
                   </div>
-                  <div className="relative h-1.5 bg-bg3 rounded-full overflow-hidden mb-0.5">
-                    <div
-                      className="absolute h-full bg-planned/40 rounded-full"
-                      style={{ width: `${planP}%` }}
-                    />
-                    <div
-                      className="absolute h-full bg-realized rounded-full"
-                      style={{ width: `${realP}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] font-mono tabular-nums">
-                    <span className="text-planned">P {planP.toFixed(0)}%</span>
-                    <span className="text-realized">G {realP.toFixed(0)}%</span>
-                  </div>
+                  <span className="font-mono text-[10px] text-realized tabular-nums shrink-0 w-8 text-right">
+                    {realP.toFixed(0)}%
+                  </span>
+                  {sec.spi != null && (
+                    <span
+                      className={cn(
+                        "font-mono text-[10px] font-bold tabular-nums shrink-0 w-8 text-right",
+                        spiL === "good" ? "text-green" : spiL === "warn" ? "text-yellow" : "text-red"
+                      )}
+                    >
+                      {sec.spi.toFixed(2)}
+                    </span>
+                  )}
                 </div>
               );
             })}
