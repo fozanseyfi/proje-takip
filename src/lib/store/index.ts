@@ -104,6 +104,8 @@ export interface StoreState {
 
   // Auth
   setCurrentUser: (userId: string | null) => void;
+  login: (email?: string) => void;
+  logout: () => void;
   addUser: (u: Omit<User, "id" | "createdAt">) => User;
 
   // Projects
@@ -402,6 +404,25 @@ export const useStore = create<StoreState>()(
       },
 
       setCurrentUser: (id) => set({ currentUserId: id }),
+
+      // Oturum aç: verilen e-postaya (yoksa mevcut ilk kullanıcıya) ait hesabı
+      // aktif oturum yap. Hiç kullanıcı yoksa varsayılan hesabı oluşturur.
+      login: (email) =>
+        set((s) => {
+          const normalized = email?.trim().toLowerCase();
+          const match =
+            (normalized
+              ? s.users.find((u) => u.email.toLowerCase() === normalized)
+              : undefined) ??
+            s.users.find((u) => u.id === s.currentUserId) ??
+            s.users[0];
+          if (match) return { currentUserId: match.id };
+          const newUser: User = { ...DEFAULT_USER, id: uid(), createdAt: now() };
+          return { users: [...s.users, newUser], currentUserId: newUser.id, _seeded: true };
+        }),
+
+      // Oturumu kapat: yalnızca aktif kullanıcıyı düşürür — hiçbir veriyi silmez.
+      logout: () => set({ currentUserId: null }),
 
       addUser: (u) => {
         const user: User = { id: uid(), createdAt: now(), ...u };

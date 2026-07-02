@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { isSandboxMode } from "@/lib/sandbox";
 
@@ -12,6 +13,16 @@ import { isSandboxMode } from "@/lib/sandbox";
  */
 export function SeedProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
+  const router = useRouter();
+  const currentUserId = useStore((s) => s.currentUserId);
+
+  // Oturum kapatıldıysa (currentUserId=null) uygulama sayfalarına erişimi engelle
+  // ve giriş ekranına döndür. Sandbox modunda oturum kavramı yok — atla.
+  useEffect(() => {
+    if (hydrated && !isSandboxMode() && currentUserId === null) {
+      router.replace("/login");
+    }
+  }, [hydrated, currentUserId, router]);
 
   useEffect(() => {
     const sandbox = isSandboxMode();

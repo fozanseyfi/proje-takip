@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
   ChevronDown,
@@ -131,6 +131,14 @@ function UserMenu({
   userInitial: string;
   currentUser: ReturnType<typeof useCurrentUser>;
 }) {
+  const router = useRouter();
+  const logout = useStore((s) => s.logout);
+
+  function onLogout() {
+    logout();
+    router.push("/login");
+  }
+
   return (
     <div className="relative group">
       <button className="flex items-center gap-2.5 pl-1 pr-2 sm:pr-3 py-1 rounded-lg hover:bg-bg2 transition-colors">
@@ -158,12 +166,13 @@ function UserMenu({
           <UserIcon size={14} /> Profilim
         </Link>
         <div className="border-t border-border my-1" />
-        <Link
-          href="/login"
-          className="flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg2 hover:text-text"
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text2 hover:bg-bg2 hover:text-text"
         >
           <LogOut size={14} /> Çıkış
-        </Link>
+        </button>
       </div>
     </div>
   );

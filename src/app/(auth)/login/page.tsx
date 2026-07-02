@@ -18,6 +18,7 @@ import { AuthMissionCard } from "@/components/auth/auth-mission-card";
 import { FeaturesShowcase } from "@/components/auth/features-showcase";
 import { PlatformsRow } from "@/components/auth/platforms-row";
 import { AppFooter } from "@/components/layout/app-footer";
+import { useStore } from "@/lib/store";
 
 export default function LoginPage() {
   return (
@@ -78,9 +79,12 @@ function HeroHeader() {
 
 function LoginColumn() {
   const router = useRouter();
+  const login = useStore((s) => s.login);
 
-  function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const email = new FormData(e.currentTarget).get("email");
+    login(typeof email === "string" ? email : undefined);
     router.push("/portfolio");
   }
 
@@ -96,6 +100,7 @@ function LoginColumn() {
               <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text3" />
               <Input
                 type="email"
+                name="email"
                 defaultValue="ozan.seyfi@kontrolmatik.com"
                 className="pl-10 h-11"
                 placeholder="ornek@firma.com"
