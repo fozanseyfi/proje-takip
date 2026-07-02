@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Users, Truck } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
-import { CollapsibleCard } from "@/components/ui/collapsible-card";
+import { SectionCard } from "@/components/ui/section-card";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber, toISODate, addDays, cn } from "@/lib/utils";
 
@@ -116,12 +116,10 @@ export function PersonnelHeadcountWidget() {
   if (!project || !data) return null;
 
   return (
-    <CollapsibleCard
+    <SectionCard
       title="Personel Headcount — Son 7 Gün"
       icon={<Users size={18} />}
-      tone="purple"
-      defaultOpen={false}
-      badge={<Badge variant="purple">{data.todayCount} bugün</Badge>}
+      badge={<Badge variant="gray">{data.todayCount} bugün</Badge>}
     >
       {/* BUGÜN — Firma × Pozisyon pivot */}
       <div className="px-4 pt-3 pb-2 border-b border-border bg-bg2/30">
@@ -282,7 +280,7 @@ export function PersonnelHeadcountWidget() {
           </table>
         </div>
       </div>
-    </CollapsibleCard>
+    </SectionCard>
   );
 }
 
@@ -388,12 +386,10 @@ export function MachineHeadcountWidget() {
   if (!project || !data) return null;
 
   return (
-    <CollapsibleCard
+    <SectionCard
       title="Makine Headcount — Son 7 Gün"
       icon={<Truck size={18} />}
-      tone="yellow"
-      defaultOpen={false}
-      badge={<Badge variant="yellow">{data.todayCount} bugün</Badge>}
+      badge={<Badge variant="gray">{data.todayCount} bugün</Badge>}
     >
       {/* BUGÜN — Firma × Tip pivot */}
       <div className="px-4 pt-3 pb-2 border-b border-border bg-bg2/30">
@@ -554,6 +550,6 @@ export function MachineHeadcountWidget() {
           </table>
         </div>
       </div>
-    </CollapsibleCard>
+    </SectionCard>
   );
 }

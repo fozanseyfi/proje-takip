@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { CalendarCheck, AlertTriangle, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
-import { CollapsibleCard } from "@/components/ui/collapsible-card";
+import { SectionCard } from "@/components/ui/section-card";
 import { formatDate, formatMoney, cn, toISODate, addDays } from "@/lib/utils";
 import type { PaymentMilestone, PaymentMilestoneStatus } from "@/lib/store/types";
 import type { Currency } from "@/lib/utils";
@@ -65,14 +65,11 @@ export function PaymentPlanWidget() {
   if (!project) return null;
 
   const hasAny = milestones.length > 0;
-  const tone = data.overdue.length > 0 ? "red" : "purple";
 
   return (
-    <CollapsibleCard
+    <SectionCard
       title="Hakediş Planı"
       icon={<CalendarCheck size={18} />}
-      tone={tone}
-      defaultOpen={data.overdue.length > 0}
       link={{ href: "/billing", label: "Detay →" }}
       badge={
         data.overdue.length > 0 ? (
@@ -163,7 +160,7 @@ export function PaymentPlanWidget() {
           </>
         )}
       </div>
-    </CollapsibleCard>
+    </SectionCard>
   );
 }
 

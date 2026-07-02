@@ -22,9 +22,6 @@ import {
   FileText,
   Building2,
   Star,
-  ChevronDown,
-  Receipt,
-  Clock,
 } from "lucide-react";
 import {
   useStore,
@@ -64,7 +61,7 @@ import {
   PersonnelHeadcountWidget,
   MachineHeadcountWidget,
 } from "@/components/dashboard/headcount-widget";
-import { CollapsibleCard } from "@/components/ui/collapsible-card";
+import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { downloadManagementReportPDF } from "@/lib/pdf/management-report";
@@ -286,7 +283,7 @@ export default function DashboardPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-accent/10 text-accent text-[11px] font-bold tracking-tight">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-soft" />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
                 Aktif
               </span>
               <span className="text-xs text-text3 font-medium">
@@ -392,7 +389,7 @@ export default function DashboardPage() {
           valueRight={
             <div className="text-right">
               <div className="text-[10px] text-text3 font-bold">TO-DATE</div>
-              <div className="font-mono text-base font-bold text-purple tabular-nums">
+              <div className="font-mono text-base font-bold text-text tabular-nums">
                 {formatNumber(totalManhours, 0)}
                 <span className="text-xs text-text3 ml-1">a-s</span>
               </div>
@@ -411,7 +408,7 @@ export default function DashboardPage() {
           valueRight={
             <div className="text-right">
               <div className="text-[10px] text-text3 font-bold">TO-DATE</div>
-              <div className="font-mono text-base font-bold text-yellow tabular-nums">
+              <div className="font-mono text-base font-bold text-text tabular-nums">
                 {formatNumber(totalMachineHours, 0)}
                 <span className="text-xs text-text3 ml-1">m-s</span>
               </div>
@@ -624,7 +621,7 @@ export default function DashboardPage() {
       {/* SECTION S-CURVES */}
       {stats.sections.length > 0 && (
         <div className="mb-6 animate-slide-up">
-          <CollapsibleCard
+          <SectionCard
             title="Bölüm S-Curve · L1"
             icon={<Activity size={18} />}
             tone="blue"
@@ -799,13 +796,13 @@ export default function DashboardPage() {
                 );
               })}
             </div>
-          </CollapsibleCard>
+          </SectionCard>
         </div>
       )}
 
       {/* HEADCOUNT + TRENDS + İMALAT ÖZETİ (4-col) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 animate-slide-up items-start">
-        <CollapsibleCard
+        <SectionCard
           title="Personel Headcount · Son 7 Gün"
           icon={<Users size={18} />}
           tone="purple"
@@ -818,8 +815,8 @@ export default function DashboardPage() {
               <EmptyChart label="Son 7 gün puantaj kaydı yok" href="/personnel" linkLabel="Puantaja git" small />
             )}
           </div>
-        </CollapsibleCard>
-        <CollapsibleCard
+        </SectionCard>
+        <SectionCard
           title="Personel Günlük Trend · 30 Gün"
           icon={<TrendingUp size={18} />}
           tone="green"
@@ -832,8 +829,8 @@ export default function DashboardPage() {
               <EmptyChart label="Trend için yeterli veri yok" href="/personnel" linkLabel="Puantaja git" small />
             )}
           </div>
-        </CollapsibleCard>
-        <CollapsibleCard
+        </SectionCard>
+        <SectionCard
           title="Makine Günlük Trend · 30 Gün"
           icon={<Truck size={18} />}
           tone="yellow"
@@ -846,8 +843,8 @@ export default function DashboardPage() {
               <EmptyChart label="Trend için yeterli veri yok" href="/machines" linkLabel="Puantaja git" small />
             )}
           </div>
-        </CollapsibleCard>
-        <CollapsibleCard
+        </SectionCard>
+        <SectionCard
           title="İmalat Bölüm Özeti"
           icon={<ListChecks size={18} />}
           tone="accent"
@@ -899,7 +896,7 @@ export default function DashboardPage() {
               <div className="text-center text-text3 text-sm py-6">Bölüm verisi yok.</div>
             )}
           </div>
-        </CollapsibleCard>
+        </SectionCard>
       </div>
 
       {/* HAKEDİŞ PLANI — gecikme varsa üst sırada */}
@@ -914,7 +911,7 @@ export default function DashboardPage() {
 
       {/* PROCUREMENT — tam genişlik */}
       <div className="mb-4 animate-slide-up">
-        <CollapsibleCard
+        <SectionCard
           title="Procurement Follow Up"
           icon={<ShoppingCart size={18} />}
           tone="blue"
@@ -1002,12 +999,12 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </CollapsibleCard>
+        </SectionCard>
       </div>
 
       {/* KRİTİK İŞLER + CLAIM&TUTANAK */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 animate-slide-up">
-        <CollapsibleCard
+        <SectionCard
           title="Kritik İşler"
           icon={<Telescope size={18} />}
           tone="red"
@@ -1049,9 +1046,9 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </CollapsibleCard>
+        </SectionCard>
 
-        <CollapsibleCard
+        <SectionCard
           title="Claim & Tutanak Konuları"
           icon={<FileText size={18} />}
           tone="purple"
@@ -1090,7 +1087,7 @@ export default function DashboardPage() {
               </table>
             </div>
           )}
-        </CollapsibleCard>
+        </SectionCard>
       </div>
 
       {/* ADAM-SAAT */}
@@ -1106,7 +1103,7 @@ export default function DashboardPage() {
 
       {/* SON 5 GÜN FAALİYET ÖZETİ */}
       <div className="mb-6 animate-slide-up">
-        <CollapsibleCard
+        <SectionCard
           title="Son 5 Günün Faaliyet Özeti"
           icon={<FileText size={18} />}
           tone="accent"
@@ -1130,13 +1127,13 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </CollapsibleCard>
+        </SectionCard>
       </div>
 
       {/* DRONE FOTO + PROJE KÜNYESİ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-slide-up">
         <div className="lg:col-span-2">
-          <CollapsibleCard
+          <SectionCard
             title={
               <>
                 Saha Fotoğrafı
@@ -1175,10 +1172,10 @@ export default function DashboardPage() {
                 </Link>
               </div>
             )}
-          </CollapsibleCard>
+          </SectionCard>
         </div>
 
-        <CollapsibleCard
+        <SectionCard
           title="Proje Künyesi"
           icon={<Building2 size={18} />}
           tone="gray"
@@ -1202,7 +1199,7 @@ export default function DashboardPage() {
               <InfoItem label="Durum" value={STATUS_LABEL_DASH[project.status] ?? project.status} />
             </dl>
           </div>
-        </CollapsibleCard>
+        </SectionCard>
       </div>
     </>
   );
@@ -1235,14 +1232,6 @@ function SpiBlock({ spi, level }: { spi: number | null; level: ReturnType<typeof
   );
 }
 
-const ICON_BG: Record<string, string> = {
-  blue:   "bg-blue/10 text-blue",
-  accent: "bg-accent/10 text-accent",
-  purple: "bg-purple/10 text-purple",
-  amber:  "bg-yellow/10 text-yellow",
-  red:    "bg-red/10 text-red",
-};
-
 function KpiBig({
   icon,
   iconBg = "accent",
@@ -1274,21 +1263,17 @@ function KpiBig({
       : delay === 3
       ? "animate-slide-up-delay-3"
       : "animate-slide-up-delay-4";
+  void iconBg;
   return (
     <div
       className={cn(
-        "rounded-2xl bg-white border border-border p-5 shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-medium",
+        "rounded-xl bg-white border border-border p-5 shadow-sm",
         delayCls
       )}
     >
       <div className="flex items-center justify-between mb-4">
         <div className="text-[10px] font-bold uppercase tracking-wider text-text3">{label}</div>
-        <span
-          className={cn(
-            "inline-flex items-center justify-center w-9 h-9 rounded-xl",
-            ICON_BG[iconBg]
-          )}
-        >
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-bg2 text-text3">
           {icon}
         </span>
       </div>

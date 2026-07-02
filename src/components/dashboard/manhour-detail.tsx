@@ -5,7 +5,7 @@ import { Clock, Building2, Users, Calendar, TrendingUp, Activity } from "lucide-
 import { useStore, useCurrentProject } from "@/lib/store";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { CollapsibleCard } from "@/components/ui/collapsible-card";
+import { SectionCard } from "@/components/ui/section-card";
 import { manhourByDiscipline, getDisciplineLabel } from "@/lib/calc/sections";
 import { formatNumber, toISODate, addDays, cn } from "@/lib/utils";
 
@@ -120,11 +120,9 @@ export function ManhourDetailWidget() {
   }
 
   return (
-    <CollapsibleCard
+    <SectionCard
       title="Adam-Saat Analiz Tablosu"
       icon={<Clock size={18} />}
-      tone="accent"
-      defaultOpen={false}
       badge={
         totalHours > 0 ? (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent/10 text-accent text-[10px] font-bold font-mono tabular-nums">
@@ -410,7 +408,7 @@ export function ManhourDetailWidget() {
           </div>
         )}
       </div>
-    </CollapsibleCard>
+    </SectionCard>
   );
 }
 

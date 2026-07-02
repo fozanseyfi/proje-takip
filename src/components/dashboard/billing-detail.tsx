@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Receipt, Users2, ChevronDown } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
-import { CollapsibleCard } from "@/components/ui/collapsible-card";
+import { SectionCard } from "@/components/ui/section-card";
 import { formatDate, formatMoney, cn } from "@/lib/utils";
 import type { BillingItem, Subcontractor, PaymentMilestone } from "@/lib/store/types";
 
@@ -63,11 +63,9 @@ export function BillingDetailWidget() {
   const ownerPaidPct = contractAmount > 0 ? (ownerPaidTotal / contractAmount) * 100 : 0;
 
   return (
-    <CollapsibleCard
+    <SectionCard
       title="Faturalandırma Durumu"
       icon={<Receipt size={18} />}
-      tone="green"
-      defaultOpen={false}
       link={{ href: "/billing", label: "Detay →" }}
     >
       <div className="px-5 py-4">
@@ -133,7 +131,7 @@ export function BillingDetailWidget() {
           </details>
         )}
       </div>
-    </CollapsibleCard>
+    </SectionCard>
   );
 }
 
