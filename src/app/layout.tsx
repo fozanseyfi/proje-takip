@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { PWARegister } from "@/components/pwa-register";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,6 +26,16 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Proje Yönetim Platformu",
   description: "EPC odaklı proje yönetim platformu — GES, RES, HES ve diğer altyapı projeleri",
+  applicationName: "Proje Takip",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Proje Takip",
+  },
 };
 
 export const viewport: Viewport = {
@@ -40,7 +51,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="tr"
       className={`${inter.variable} ${jakarta.variable} ${jetbrains.variable}`}
     >
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        {children}
+        <PWARegister />
+      </body>
     </html>
   );
 }
