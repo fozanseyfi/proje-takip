@@ -666,7 +666,7 @@ export default function DashboardPage() {
           defaultOpen={false}
           badge={<Badge variant="gray">{stats.sections.length}</Badge>}
         >
-          <div className="max-h-[260px] overflow-y-auto">
+          <div>
             {stats.sections.map((sec) => {
               const spiL = spiLevel(sec.spi);
               const planP = sec.planPct * 100;
