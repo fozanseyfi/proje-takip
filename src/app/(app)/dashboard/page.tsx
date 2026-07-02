@@ -348,7 +348,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI STRIP */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <KpiBig
           icon={<Target size={16} />}
           iconBg="blue"
@@ -1082,25 +1082,32 @@ function KpiBig({
   return (
     <div
       className={cn(
-        "rounded-xl bg-white border border-border2 p-5 shadow-md",
+        "flex flex-col rounded-xl bg-white border border-border2 p-5 shadow-md",
         delayCls
       )}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-text3">{label}</div>
-        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-bg2 text-text3">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-text3 leading-tight min-h-[26px]">
+          {label}
+        </div>
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent shrink-0">
           {icon}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-3">
-        <div className={cn("font-mono text-[28px] font-bold leading-none tracking-tight tabular-nums", valueColor)}>
+      <div className="flex items-end justify-between gap-2 min-w-0">
+        <div
+          className={cn(
+            "font-mono text-[26px] font-bold leading-none tracking-tight tabular-nums truncate min-w-0",
+            valueColor
+          )}
+        >
           {value}
         </div>
-        {valueRight}
+        {valueRight && <div className="shrink-0">{valueRight}</div>}
       </div>
       {sub && <div className="text-xs text-text2 mt-2 font-medium">{sub}</div>}
       {typeof bar === "number" && (
-        <div className="h-1 bg-bg3 rounded-full mt-4 overflow-hidden">
+        <div className="h-1.5 bg-bg3 rounded-full mt-auto pt-0 overflow-hidden">
           <div
             className="h-full rounded-full transition-[width] duration-700 ease-out"
             style={{ width: `${Math.min(100, Math.max(0, bar))}%`, background: barColor || "var(--accent)" }}
