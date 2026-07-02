@@ -36,10 +36,8 @@ import {
   ProcurementKpiStrip,
   computeProcurementKpis,
 } from "@/components/dashboard/procurement-kpis";
-import { getPlanRange } from "@/lib/calc/predecessors";
 import {
   computeSectionProgress,
-  buildSectionSCurve,
   headcountByDate,
   machineCountByDate,
   manhourByDiscipline,
@@ -51,7 +49,6 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { SCurveChart } from "@/components/charts/s-curve-chart";
-import { MiniSCurve } from "@/components/charts/section-scurve";
 import { HeadcountBar } from "@/components/charts/headcount-bar";
 import { TrendLine } from "@/components/charts/trend-line";
 import { BillingDetailWidget } from "@/components/dashboard/billing-detail";
@@ -592,10 +589,10 @@ export default function DashboardPage() {
       )}
 
       {/* MASTER S-CURVE */}
-      <Card className="mb-6 animate-slide-up">
+      <Card className="mb-6 animate-slide-up border-border2 shadow-md">
         <div className="flex items-center justify-between mb-2">
-          <CardTitle>
-            <Activity size={14} className="text-accent" />
+          <CardTitle className="font-display text-[15px] font-bold">
+            <Activity size={16} className="text-accent" />
             Genel S-Curve · Plan vs Gerçekleşme
           </CardTitle>
           <Link
@@ -617,188 +614,6 @@ export default function DashboardPage() {
           <EmptyChart label="Henüz planlama / gerçekleşme verisi yok" href="/planning" linkLabel="Planlamaya geç" />
         )}
       </Card>
-
-      {/* SECTION S-CURVES */}
-      {stats.sections.length > 0 && (
-        <div className="mb-6 animate-slide-up">
-          <SectionCard
-            title="Bölüm S-Curve · L1"
-            icon={<Activity size={18} />}
-            tone="blue"
-            defaultOpen={false}
-            badge={<Badge variant="gray">{stats.sections.length}</Badge>}
-          >
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {stats.sections.map((sec) => {
-                const sCurve = buildSectionSCurve(
-                  wbs,
-                  planned,
-                  realized,
-                  sec.code,
-                  project.reportDate,
-                  stats.allDates
-                );
-                const spiL = spiLevel(sec.spi);
-
-                // Section'a özgü tahmin: section'ın kendi leaf'leri + kendi tarih aralığı
-                const sectionLeaves = wbs.filter(
-                  (w) => w.isLeaf && !w.deletedAt && w.code.startsWith(sec.code + ".")
-                );
-                const leafItems = sectionLeaves.map((l) => ({
-                  code: l.code,
-                  isLeaf: true,
-                  quantity: l.quantity,
-                  weight: l.weight,
-                }));
-                // Section'ın planlanan başlangıç + bitiş tarihleri (leaf'lerden agregat)
-                let secStart: string | undefined;
-                let secEnd: string | undefined;
-                for (const l of sectionLeaves) {
-                  const r = getPlanRange(planned[l.code]);
-                  if (r.start && (!secStart || r.start < secStart)) secStart = r.start;
-                  if (r.end && (!secEnd || r.end > secEnd)) secEnd = r.end;
-                }
-                const secFc = secStart && secEnd
-                  ? computeForecast(
-                      leafItems,
-                      planned,
-                      realized,
-                      project.reportDate,
-                      secStart,
-                      secEnd
-                    )
-                  : null;
-                const secFcCurve = secStart && secEnd
-                  ? buildForecastCurve(
-                      leafItems,
-                      planned,
-                      realized,
-                      project.reportDate,
-                      secStart,
-                      secEnd
-                    )
-                  : null;
-                // sCurve'e forecast değerlerini ekle (tarihe göre eşle)
-                const fcByDate = new Map(
-                  secFcCurve ? secFcCurve.points.map((p) => [p.date, p.forecast]) : []
-                );
-                const enrichedCurve = sCurve.map((p) => ({
-                  ...p,
-                  forecast: fcByDate.get(p.date) ?? NaN,
-                }));
-                // Forecast curve sCurve dışına uzanıyorsa devamını ekle
-                if (secFcCurve && sCurve.length > 0) {
-                  const lastDate = sCurve[sCurve.length - 1].date;
-                  for (const fp of secFcCurve.points) {
-                    if (fp.date > lastDate) {
-                      enrichedCurve.push({
-                        date: fp.date,
-                        planPct: fp.pv,
-                        realPct: NaN,
-                        forecast: fp.forecast,
-                      });
-                    }
-                  }
-                }
-
-                const delta = secFc?.deltaDays ?? 0;
-                const hasForecast = secFc?.forecastEnd != null;
-                const secConf = getConfidenceTier(sec.realPct);
-                // EV %5 altıysa veya forecast yoksa kademe yok kabul et
-                const showFc = secConf.showForecast && hasForecast;
-
-                // Enriched curve'de forecast değerlerini gizle (tier == none ise)
-                const renderCurve = secConf.showForecast
-                  ? enrichedCurve
-                  : enrichedCurve.map((p) => ({ ...p, forecast: NaN }));
-
-                return (
-                  <div key={sec.code} className="rounded-xl border border-border p-4 bg-bg2/40">
-                    <div className="flex items-center justify-between mb-2 gap-2">
-                      <div className="text-sm font-bold text-text truncate">
-                        <span className="font-mono text-text3 mr-1.5 text-xs">{sec.code}</span>
-                        {sec.name}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {sec.spi != null && (
-                          <Badge variant={spiL === "good" ? "green" : spiL === "warn" ? "yellow" : "red"}>
-                            SPI {sec.spi.toFixed(2)}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-baseline gap-3 mb-2 text-xs">
-                      <span className="text-planned font-mono font-semibold">
-                        Plan {(sec.planPct * 100).toFixed(0)}%
-                      </span>
-                      <span className="text-realized font-mono font-semibold">
-                        Gerçek {(sec.realPct * 100).toFixed(0)}%
-                      </span>
-                      <span className="text-text3 ml-auto">{sec.leafCount} kalem</span>
-                    </div>
-                    {sCurve.length > 0 ? (
-                      <MiniSCurve
-                        data={renderCurve}
-                        reportDate={project.reportDate}
-                        plannedEnd={secEnd ?? null}
-                        forecastEnd={showFc ? secFc?.forecastEnd ?? null : null}
-                        forecastOpacity={secConf.forecastOpacity}
-                        height={160}
-                      />
-                    ) : (
-                      <div className="h-[160px] flex items-center justify-center text-text3 text-[10px]">
-                        veri yok
-                      </div>
-                    )}
-                    {/* Plana göre erken/geç bitiş notu + güvenilirlik */}
-                    <div className="mt-2 text-[11px] font-semibold flex items-center gap-2 flex-wrap">
-                      {!showFc ? (
-                        <span className="text-text3">
-                          Tahmin için yeterli veri yok (EV %{(sec.realPct * 100).toFixed(1)})
-                        </span>
-                      ) : (
-                        <>
-                          {delta === 0 && (
-                            <span className="text-green">✓ Plana göre zamanında bitecek</span>
-                          )}
-                          {delta < 0 && (
-                            <span className="text-blue">
-                              ◂ Plana göre <strong>{Math.abs(delta)} gün erken</strong> bitecek
-                            </span>
-                          )}
-                          {delta > 0 && delta <= 7 && (
-                            <span className="text-yellow">
-                              ⚠ Plana göre <strong>+{delta} gün geç</strong> bitecek
-                            </span>
-                          )}
-                          {delta > 7 && (
-                            <span className="text-red">
-                              ⚠ Plana göre <strong>+{delta} gün geç</strong> bitecek
-                            </span>
-                          )}
-                          {/* Güvenilirlik etiketi */}
-                          {(secConf.tier === "very-low" || secConf.tier === "low") && (
-                            <span
-                              className={cn(
-                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ml-auto",
-                                secConf.badgeColor === "red" && "bg-red/15 text-red",
-                                secConf.badgeColor === "yellow" && "bg-yellow/20 text-yellow"
-                              )}
-                              title={secConf.description}
-                            >
-                              ⚠ {secConf.label}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </SectionCard>
-        </div>
-      )}
 
       {/* HEADCOUNT + TRENDS + İMALAT ÖZETİ (4-col) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 animate-slide-up items-start">
@@ -1267,7 +1082,7 @@ function KpiBig({
   return (
     <div
       className={cn(
-        "rounded-xl bg-white border border-border p-5 shadow-sm",
+        "rounded-xl bg-white border border-border2 p-5 shadow-md",
         delayCls
       )}
     >

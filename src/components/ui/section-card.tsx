@@ -33,20 +33,22 @@ export function SectionCard({
   return (
     <section
       className={cn(
-        "rounded-xl bg-white border border-border shadow-sm overflow-hidden",
+        "rounded-xl bg-white border border-border2 shadow-md overflow-hidden",
         className
       )}
     >
-      <div className="px-5 py-3 flex items-center gap-2.5 border-b border-border bg-bg2/30">
+      <div className="px-5 py-3.5 flex items-center gap-3 border-b border-border bg-bg2/40">
         {icon && (
-          <span className="text-text3 shrink-0 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10 text-accent shrink-0 [&>svg]:w-[18px] [&>svg]:h-[18px]">
+            {icon}
+          </span>
         )}
-        <h3 className="text-[13px] font-semibold text-text tracking-tight">{title}</h3>
+        <h3 className="font-display text-[15px] font-bold text-text tracking-tight">{title}</h3>
         {badge && <span className="text-text3">{badge}</span>}
         {link && (
           <Link
             href={link.href}
-            className="ml-auto text-[11px] font-medium text-accent hover:underline whitespace-nowrap"
+            className="ml-auto text-[11px] font-semibold text-accent hover:underline whitespace-nowrap"
           >
             {link.label}
           </Link>
