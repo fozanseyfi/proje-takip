@@ -18,6 +18,7 @@ import { formatDate, formatNumber, toISODate, daysBetween } from "@/lib/utils";
 import type { Project, DailyReport, PersonnelAttendance, MachineAttendance, WbsItem } from "@/lib/store/types";
 import { loadingOverlay } from "@/lib/ui-loading";
 import { sumByDateMap } from "@/lib/calc/progress";
+import { resolvePhotoUrls } from "@/lib/data/photo-store";
 
 export interface DCRInput {
   project: Project;
@@ -104,9 +105,20 @@ async function _renderDCR(input: DCRInput): Promise<void> {
   const dayNo = daysBetween(project.startDate, date) + 1;
 
   // ─── HTML body ───
-  const weatherLine = report?.weather
-    ? `${report.weather}${report.temperatureMin != null && report.temperatureMax != null ? ` · ${report.temperatureMin}°C – ${report.temperatureMax}°C` : ""}`
-    : "Bilgi yok";
+  const tempPart =
+    report?.temperatureMin != null && report?.temperatureMax != null
+      ? `${report.temperatureMin}°C – ${report.temperatureMax}°C`
+      : report?.temperatureMin != null
+        ? `min ${report.temperatureMin}°C`
+        : report?.temperatureMax != null
+          ? `maks ${report.temperatureMax}°C`
+          : "";
+  const weatherLine = [report?.weather, tempPart, report?.wind].filter(Boolean).join(" · ") || "Bilgi yok";
+
+  // Fotoğraflar IndexedDB referansı ("idb:...") olarak saklanır — görüntülenebilir url'e çevir
+  const photoUrls = report?.photos?.length
+    ? (await resolvePhotoUrls(report.photos.map((p) => p.url))).filter(Boolean)
+    : [];
 
   const realizedRows = realizedToday.length === 0
     ? `<tr><td colspan="5" style="padding:14px; text-align:center; color:#94a3b8; border:1px solid #e5e7eb;">Bu gün için kayıtlı gerçekleşme yok.</td></tr>`
@@ -120,12 +132,12 @@ async function _renderDCR(input: DCRInput): Promise<void> {
       </tr>
     `).join("");
 
-  const photosHtml = report?.photos && report.photos.length > 0
+  const photosHtml = photoUrls.length > 0
     ? `<div style="margin-top:14px;">
-         <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:6px;">SAHA FOTOĞRAFLARI (${report.photos.length})</div>
+         <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:6px;">SAHA FOTOĞRAFLARI (${photoUrls.length})</div>
          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
-           ${report.photos.slice(0, 8).map((p) => `
-             <img src="${escapeHtml(p.url)}" style="width:100%; aspect-ratio:1.4; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
+           ${photoUrls.slice(0, 8).map((url) => `
+             <img src="${escapeHtml(url)}" style="width:100%; aspect-ratio:1.4; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
            `).join("")}
          </div>
        </div>`
@@ -154,7 +166,6 @@ async function _renderDCR(input: DCRInput): Promise<void> {
         <div style="padding:8px 12px; background:#f8fafc;">
           <div style="font-size:8.5px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">HAVA DURUMU</div>
           <div style="font-size:11px; font-weight:700; color:#0f172a; margin-top:2px;">${escapeHtml(weatherLine)}</div>
-          ${report?.weatherAutoFetched ? `<div style="font-size:9px; color:#64748b; margin-top:1px;">Otomatik · Open-Meteo</div>` : ""}
         </div>
       </div>
 
@@ -179,7 +190,7 @@ async function _renderDCR(input: DCRInput): Promise<void> {
         </div>
         <div style="padding:10px 12px; background:#f3e8ff; border:1px solid #d8b4fe; border-radius:6px; text-align:center;">
           <div style="font-size:8.5px; color:#7c3aed; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">FOTOĞRAF</div>
-          <div style="font-size:22px; font-weight:900; color:#7c3aed; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${report?.photos?.length ?? 0}</div>
+          <div style="font-size:22px; font-weight:900; color:#7c3aed; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${photoUrls.length}</div>
           <div style="font-size:9.5px; color:#475569; margin-top:1px;">adet eklendi</div>
         </div>
       </div>
@@ -217,12 +228,10 @@ async function _renderDCR(input: DCRInput): Promise<void> {
         </div>
       </div>
 
-      ${report?.tomorrowPlan ? `
-        <div style="margin-top:10px;">
-          <div style="font-size:10px; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">→ YARIN İÇİN PLAN</div>
-          <div style="padding:8px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; font-size:11px; color:#0c4a6e; white-space:pre-wrap; line-height:1.5;">${escapeHtml(report.tomorrowPlan)}</div>
-        </div>
-      ` : ""}
+      <div style="margin-top:10px;">
+        <div style="font-size:10px; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">→ YARIN İÇİN PLAN</div>
+        <div style="min-height:40px; padding:8px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; font-size:11px; color:#0c4a6e; white-space:pre-wrap; line-height:1.5;">${escapeHtml(report?.tomorrowPlan || "—")}</div>
+      </div>
 
       ${photosHtml}
 

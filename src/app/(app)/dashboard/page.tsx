@@ -63,6 +63,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { downloadManagementReportPDF } from "@/lib/pdf/management-report";
 import { usePanelName } from "@/lib/store";
+import { ResolvedImg } from "@/components/ui/resolved-img";
 import {
   formatDate,
   daysBetween,
@@ -957,9 +958,8 @@ export default function DashboardPage() {
           >
             {dronePhoto ? (
               <div className="relative aspect-video bg-bg2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={dronePhoto.url}
+                <ResolvedImg
+                  url={dronePhoto.url}
                   alt={dronePhoto.caption || "Saha fotoğrafı"}
                   className="w-full h-full object-cover"
                 />

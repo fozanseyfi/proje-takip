@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * Timeline & Gantt — proje BASELINE planının kapsamlı görünümü.
+ * Timeline & Gantt — proje planının kapsamlı görünümü.
  *
- * Veri kaynağı:
- *   - Planlı: `baseline[projectId]` (PMP onaylı orijinal plan)
- *             Baseline yoksa fallback olarak `planned` kullanılır.
+ * Veri kaynağı (Plan Kaynağı seçimi):
+ *   - Güncel Plan (varsayılan): `planned[projectId]` — Planlama > Gantt Önizleme ile aynı
+ *   - Baseline: `baseline[projectId]` (dondurulmuş orijinal plan, alınmışsa)
  *   - Gerçekleşen: `realized[projectId]`
  *
- * Kapsam:
- *   - Sadece BASELINE'DA MİKTARI GİRİLEN kalemler tablo'da gösterilir.
- *     (Süre-only kalemler ve milestone'lar tarihsizse gösterilmez.)
+ * Bar aralıkları `computeDurationRanges` ile hesaplanır: miktar girilmiş kalemde
+ * plan tarihleri, girilmemişse tahmini süre + öncüller (CPM).
  *   - Realized: yalnız o kalemin baseline'da kaydı varsa altında ikinci bar olarak.
  *
  * Filtreler:
@@ -47,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn, formatDate, toISODate } from "@/lib/utils";
 import { computeSchedule, getPlanRange, type LeafSchedule } from "@/lib/calc/predecessors";
+import { computeDurationRanges } from "@/lib/calc/duration-ranges";
 import { BigGantt, type TimelineRow } from "@/components/timeline/big-gantt";
 import { WhatIfDialog } from "@/components/planning/whatif-dialog";
 import { loadingOverlay } from "@/lib/ui-loading";
@@ -67,11 +67,17 @@ export default function TimelinePage() {
   const [showL3, setShowL3] = useState(true);
   // Planlanan / Gerçekleşen seçenekleri — her ikisi de seçilebilir
   const [showPlan, setShowPlan] = useState(true);
-  const [showRealized, setShowRealized] = useState(true);
+  // Varsayılan kapalı — öncül okları sadece "Planlanan" tek başına açıkken çizilir.
+  const [showRealized, setShowRealized] = useState(false);
+  // Plan kaynağı: güncel plan (Planlama > Gantt Önizleme ile aynı) veya dondurulmuş baseline
+  const [planSource, setPlanSource] = useState<"current" | "baseline">("current");
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // ─── CPM hesabı — baseline üzerinde ───
+  const useBaseline = planSource === "baseline" && hasBaseline;
+  const planData = useBaseline ? baseline : planned;
+
+  // ─── CPM hesabı — seçili plan kaynağı üzerinde ───
   const { schedules, criticalCodes, cycleNodes } = useMemo(() => {
     if (!project) {
       return {
@@ -80,44 +86,30 @@ export default function TimelinePage() {
         cycleNodes: new Set<string>(),
       };
     }
-    const r = computeSchedule(wbs, baseline, project.startDate, project.plannedEnd);
+    const r = computeSchedule(wbs, planData, project.startDate, project.plannedEnd);
     return {
       schedules: r.schedules,
       criticalCodes: r.critical,
       cycleNodes: r.cycleNodes,
     };
-  }, [wbs, baseline, project]);
+  }, [wbs, planData, project]);
 
   // ─── Rows: hierarchical (L1/L2/L3) + planlı/realized range + filtreli ───
   const rows = useMemo<TimelineRow[]>(() => {
     if (!project) return [];
 
-    // 1. Leaf'lerin planlı range'i — SADECE baseline'da miktar girilmiş olanlar
-    const leafPlan = new Map<string, { start: string; end: string }>();
+    // 1. Leaf bar aralıkları — Planlama > Gantt Önizleme ile aynı mantık:
+    //    plan (miktar) varsa plan tarihleri, yoksa tahmini süre + öncüller (CPM).
+    const leafs = wbs.filter((w) => w.isLeaf && !w.deletedAt);
+    const leafPlan = computeDurationRanges(leafs, planData, schedules, project.startDate);
     const leafReal = new Map<string, { start: string; end: string }>();
-
-    for (const w of wbs) {
-      if (!w.isLeaf || w.deletedAt) continue;
-
-      // Milestone — tarih girilmişse al, yoksa gösterme
+    for (const w of leafs) {
       if (w.activityType === "milestone") {
-        if (w.milestoneDate) {
-          leafPlan.set(w.code, { start: w.milestoneDate, end: w.milestoneDate });
-        }
-        // Milestone gerçekleşmesi varsa onu da ekle
         if (w.milestoneCompletedAt) {
           leafReal.set(w.code, { start: w.milestoneCompletedAt, end: w.milestoneCompletedAt });
         }
         continue;
       }
-
-      // Work — baseline'da miktar girilmişse al
-      const planR = getPlanRange(baseline[w.code]);
-      if (planR.start && planR.end) {
-        leafPlan.set(w.code, { start: planR.start, end: planR.end });
-      }
-
-      // Realized
       const realR = getPlanRange(realized[w.code]);
       if (realR.start && realR.end) {
         leafReal.set(w.code, { start: realR.start, end: realR.end });
@@ -159,7 +151,7 @@ export default function TimelinePage() {
           item: w,
           level: w.level,
           isLeaf: true,
-          planRange: p,
+          planRange: { start: p.start, end: p.end },
           realizedRange: r,
         });
       } else {
@@ -196,7 +188,7 @@ export default function TimelinePage() {
       }
     }
     return out;
-  }, [wbs, baseline, realized, project, showL1, showL2, showL3]);
+  }, [wbs, planData, schedules, realized, project, showL1, showL2, showL3]);
 
   // ─── PDF Export ───
   async function exportPdf() {
@@ -258,7 +250,7 @@ export default function TimelinePage() {
           pdf.setFont("helvetica", "normal");
           pdf.text(subtitle, margin, margin + 5);
         };
-        const baseSubtitle = `Timeline (Baseline) · ${formatDate(project.startDate)} -> ${formatDate(project.plannedEnd)} · Rapor: ${formatDate(project.reportDate)}`;
+        const baseSubtitle = `Timeline (${useBaseline ? "Baseline" : "Güncel Plan"}) · ${formatDate(project.startDate)} -> ${formatDate(project.plannedEnd)} · Rapor: ${formatDate(project.reportDate)}`;
 
         if (imgHmm <= availH) {
           drawHeader(baseSubtitle);
@@ -284,7 +276,7 @@ export default function TimelinePage() {
             pdf.addImage(sliceData, "PNG", margin, margin + headerH, imgWmm, sliceHmmActual);
           }
         }
-        const fileName = `${project.name.replace(/\s+/g, "-")}-Timeline-Baseline-${toISODate(new Date())}.pdf`;
+        const fileName = `${project.name.replace(/\s+/g, "-")}-Timeline-${useBaseline ? "Baseline" : "Plan"}-${toISODate(new Date())}.pdf`;
         pdf.save(fileName);
         toast("Timeline PDF kaydedildi (A3)", "success");
       }, "Timeline PDF hazırlanıyor");
@@ -309,7 +301,7 @@ export default function TimelinePage() {
     <>
       <PageHeader
         title="Timeline & Gantt"
-        description={`Baseline planı · ${formatDate(project.startDate)} → ${formatDate(project.plannedEnd)}`}
+        description={`${useBaseline ? "Baseline planı" : "Güncel plan"} · ${formatDate(project.startDate)} → ${formatDate(project.plannedEnd)}`}
         icon={BarChart3}
         actions={
           <Button variant="accent" onClick={exportPdf} disabled={exporting} size="sm">
@@ -320,16 +312,7 @@ export default function TimelinePage() {
       />
 
       {/* Baseline durumu */}
-      {!hasBaseline && Object.keys(planned).length > 0 && (
-        <Alert variant="info" className="mb-4">
-          <Info size={14} className="inline mr-1.5" />
-          <strong>Baseline alınmamış.</strong> Şu an mevcut planlama verisi gösteriliyor.
-          Baseline almak için <a href="/planning" className="text-accent underline font-bold">Planlama</a> sayfasında
-          &quot;Baseline Al&quot; butonuna basın.
-        </Alert>
-      )}
-
-      {hasBaseline && baselineSetAt && (
+      {useBaseline && baselineSetAt && (
         <div className="mb-3 inline-flex items-center gap-2 text-[11px] text-accent bg-accent/8 border border-accent/25 rounded-md px-2.5 py-1">
           <Info size={11} />
           <span className="font-bold uppercase tracking-wider">Baseline</span>
@@ -389,6 +372,24 @@ export default function TimelinePage() {
             label="Gerçekleşen"
             color="accent"
           />
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          <span className="text-[10px] uppercase tracking-wider font-bold text-text3 mr-1">
+            Plan Kaynağı:
+          </span>
+          <TypeChip
+            active={planSource === "current"}
+            onToggle={() => setPlanSource("current")}
+            icon={<CalendarDays size={13} />}
+            label="Güncel Plan"
+            color="blue"
+          />
+          <TypeChip
+            active={useBaseline}
+            onToggle={() => hasBaseline && setPlanSource("baseline")}
+            icon={<Info size={13} />}
+            label={hasBaseline ? "Baseline" : "Baseline (alınmamış)"}
+            color="purple"
+          />
           {showRealized && (
             <span className="text-[10.5px] text-text3 italic ml-1">
               ℹ Gerçekleşen açıkken öncül okları kapalıdır.
@@ -435,7 +436,7 @@ export default function TimelinePage() {
         onClose={() => setWhatIfOpen(false)}
         wbs={wbs}
         leafs={wbs.filter((w) => w.isLeaf && !w.deletedAt)}
-        planned={baseline}
+        planned={planData}
         projectStart={project.startDate}
       />
     </>

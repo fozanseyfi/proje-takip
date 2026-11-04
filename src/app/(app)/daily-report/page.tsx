@@ -7,16 +7,18 @@ import {
   ChevronRight,
   Cloud,
   CloudRain,
+  CloudLightning,
+  CloudFog,
+  CloudSun,
   Sun,
   CloudSnow,
   Camera,
   X,
   Save,
   RefreshCw,
-  Wind,
-  Droplets,
 } from "lucide-react";
 import { useStore, useCurrentProject, useCurrentUser, useProjectWbs, useProjectRealized } from "@/lib/store";
+import type { DailyReport } from "@/lib/store/types";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -25,16 +27,55 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { formatDate, toISODate, daysBetween } from "@/lib/utils";
-import { fetchWeatherDayCached, type WeatherDay } from "@/lib/data/weather";
+import { compressImage, deletePhoto, putPhoto, useResolvedPhotoUrls } from "@/lib/data/photo-store";
 
-// Hava durumu artık Open-Meteo'dan gerçek zamanlı çekiliyor — bkz. fetchWeatherDayCached
+type Photo = DailyReport["photos"][number];
+
+/** Hava durumu — manuel seçim listesi */
+const WEATHER_OPTIONS = [
+  "Açık / Güneşli",
+  "Az bulutlu",
+  "Parçalı bulutlu",
+  "Çok bulutlu",
+  "Kapalı",
+  "Sisli / Puslu",
+  "Hafif yağmurlu",
+  "Yağmurlu",
+  "Sağanak yağışlı",
+  "Gök gürültülü fırtına",
+  "Karla karışık yağmur",
+  "Kar yağışlı",
+  "Dolu",
+  "Tozlu / Kum fırtınası",
+  "Dondurucu soğuk / Buzlanma",
+  "Aşırı sıcak",
+];
+
+const WIND_OPTIONS = ["Sakin", "Hafif rüzgarlı", "Orta rüzgarlı", "Kuvvetli rüzgarlı", "Fırtına"];
 
 function weatherIcon(condition?: string) {
-  if (!condition) return <Cloud size={18} />;
-  if (condition.includes("Güneş")) return <Sun size={18} className="text-yellow" />;
-  if (condition.includes("Yağmur")) return <CloudRain size={18} className="text-blue" />;
-  if (condition.includes("Kar")) return <CloudSnow size={18} className="text-blue" />;
+  const c = (condition ?? "").toLocaleLowerCase("tr");
+  if (!c) return <Cloud size={18} className="text-text3" />;
+  if (c.includes("gök gürültülü") || c.includes("fırtına")) return <CloudLightning size={18} className="text-purple" />;
+  if (c.includes("kar") || c.includes("dolu") || c.includes("buz")) return <CloudSnow size={18} className="text-blue" />;
+  if (c.includes("yağmur") || c.includes("sağanak")) return <CloudRain size={18} className="text-blue" />;
+  if (c.includes("sis") || c.includes("pus") || c.includes("toz")) return <CloudFog size={18} className="text-text2" />;
+  if (c.includes("az bulutlu") || c.includes("parçalı")) return <CloudSun size={18} className="text-yellow" />;
+  if (c.includes("güneş") || c.includes("açık") || c.includes("sıcak")) return <Sun size={18} className="text-yellow" />;
   return <Cloud size={18} className="text-text2" />;
+}
+
+function parseNum(v: string): number | undefined {
+  if (v.trim() === "") return undefined;
+  const n = Number(v.replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function isQuotaError(err: unknown): boolean {
+  return (
+    err instanceof DOMException &&
+    (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED")
+  );
 }
 
 export default function DailyReportPage() {
@@ -64,53 +105,28 @@ export default function DailyReportPage() {
     [reports, project, date]
   );
 
-  // Open-Meteo'dan asenkron hava durumu — proje konumu varsa otomatik çek
-  const [weather, setWeather] = useState<WeatherDay | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [weatherError, setWeatherError] = useState<string | null>(null);
+  // Hava durumu — manuel seçim
+  const [weather, setWeather] = useState("");
+  const [wind, setWind] = useState("");
+  const [tempMin, setTempMin] = useState("");
+  const [tempMax, setTempMax] = useState("");
 
   const [summary, setSummary] = useState("");
   const [issues, setIssues] = useState("");
   const [tomorrowPlan, setTomorrowPlan] = useState("");
-  const [photos, setPhotos] = useState<{ url: string; caption?: string; uploadedAt: string }[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [workStopped, setWorkStopped] = useState(false);
   const [workStoppedReason, setWorkStoppedReason] = useState("");
 
-  // Hava durumunu çek — sadece koordinat varsa ve "existing weather" yoksa
-  useEffect(() => {
-    setWeatherError(null);
-    if (!project || existing?.weather) {
-      setWeather(null);
-      return;
-    }
-    if (project.latitude == null || project.longitude == null) {
-      // Koordinat yok — uyarı göster, hava otomatik dolmasın
-      setWeather(null);
-      setWeatherError("Proje ayarlarında enlem/boylam tanımlı değil — hava otomatik çekilemez");
-      return;
-    }
-    let cancelled = false;
-    setWeatherLoading(true);
-    fetchWeatherDayCached(project.latitude, project.longitude, date)
-      .then((w) => {
-        if (!cancelled) setWeather(w);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setWeather(null);
-          setWeatherError(err instanceof Error ? err.message : "Hava durumu alınamadı");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setWeatherLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [project, date, existing?.weather]);
+  const photoUrls = useResolvedPhotoUrls(photos.map((p) => p.url));
 
   // Tarihten existing'i ilkleme — state'i resetle
   useEffect(() => {
+    setWeather(existing?.weather ?? "");
+    setWind(existing?.wind ?? "");
+    setTempMin(existing?.temperatureMin != null ? String(existing.temperatureMin) : "");
+    setTempMax(existing?.temperatureMax != null ? String(existing.temperatureMax) : "");
     setSummary(existing?.summary ?? "");
     setIssues(existing?.issues ?? "");
     setTomorrowPlan(existing?.tomorrowPlan ?? "");
@@ -120,57 +136,76 @@ export default function DailyReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, existing?.id]);
 
-  // Hava durumu yüklendikten sonra workStopped'ı otomatik aktive et (yalnız existing yoksa)
-  useEffect(() => {
-    if (!weather || existing) return;
-    if (weather.workStopped) {
-      setWorkStopped(true);
-      setWorkStoppedReason(weather.workStoppedReason);
-    }
-  }, [weather, existing]);
+  const toast = useToast((s) => s.push);
 
-  function onPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files) return;
-    const readers: Promise<{ url: string; caption?: string; uploadedAt: string }>[] = [];
-    for (const f of Array.from(files)) {
-      readers.push(
-        new Promise((res) => {
-          const r = new FileReader();
-          r.onload = () => res({ url: r.result as string, uploadedAt: new Date().toISOString() });
-          r.readAsDataURL(f);
-        })
-      );
+  async function onPhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.target;
+    const files = input.files ? Array.from(input.files) : [];
+    if (files.length === 0) return;
+    setPhotoBusy(true);
+    try {
+      const added: Photo[] = [];
+      for (const f of files) {
+        const dataUrl = await compressImage(f);
+        const ref = await putPhoto(dataUrl);
+        added.push({ url: ref, uploadedAt: new Date().toISOString() });
+      }
+      setPhotos((p) => [...p, ...added]);
+      toast(`${added.length} fotoğraf eklendi — kaydetmeyi unutma`, "info");
+    } catch (err) {
+      console.error(err);
+      toast("Fotoğraf eklenemedi (tarayıcı depolaması kullanılamıyor)", "error");
+    } finally {
+      setPhotoBusy(false);
+      input.value = ""; // aynı dosya tekrar seçilebilsin
     }
-    Promise.all(readers).then((results) => setPhotos((p) => [...p, ...results]));
   }
 
   function removePhoto(idx: number) {
     setPhotos((p) => p.filter((_, i) => i !== idx));
   }
 
-  const toast = useToast((s) => s.push);
-
-  function save() {
-    if (!project || !user) return;
-    const w = weather;
-    upsertReport({
-      id: existing?.id,
-      projectId: project.id,
-      reportDate: date,
-      weather: existing?.weather ?? w?.condition,
-      temperatureMin: existing?.temperatureMin ?? w?.tempMin,
-      temperatureMax: existing?.temperatureMax ?? w?.tempMax,
-      weatherAutoFetched: !existing?.weather,
-      workStopped,
-      workStoppedReason: workStopped ? workStoppedReason || undefined : undefined,
-      summary,
-      issues: issues || undefined,
-      tomorrowPlan: tomorrowPlan || undefined,
-      photos,
-      createdBy: user.id,
-    });
-    toast("Günlük rapor kaydedildi", "success");
+  /** Formu kaydeder; başarılıysa kaydedilen raporu döner. */
+  function save(opts: { silent?: boolean } = {}): DailyReport | undefined {
+    if (!project || !user) return undefined;
+    const tMin = parseNum(tempMin);
+    const tMax = parseNum(tempMax);
+    let saved: DailyReport;
+    try {
+      saved = upsertReport({
+        id: existing?.id,
+        projectId: project.id,
+        reportDate: date,
+        weather: weather || undefined,
+        wind: wind || undefined,
+        temperatureMin: tMin,
+        temperatureMax: tMax,
+        weatherAutoFetched: false,
+        workStopped,
+        workStoppedReason: workStopped ? workStoppedReason || undefined : undefined,
+        summary,
+        issues: issues || undefined,
+        tomorrowPlan: tomorrowPlan || undefined,
+        photos,
+        createdBy: user.id,
+      });
+    } catch (err) {
+      console.error(err);
+      toast(
+        isQuotaError(err)
+          ? "Kaydedilemedi: tarayıcı hafızası dolu. Veri Yedeği sayfasından yedek alıp eski verileri temizleyin."
+          : "Rapor kaydedilemedi",
+        "error"
+      );
+      return undefined;
+    }
+    // Rapordan çıkarılan fotoğrafları depodan da sil
+    const keep = new Set(photos.map((p) => p.url));
+    for (const p of existing?.photos ?? []) {
+      if (!keep.has(p.url)) void deletePhoto(p.url).catch(() => {});
+    }
+    if (!opts.silent) toast("Günlük rapor kaydedildi", "success");
+    return saved;
   }
 
   // Tarih sınırları: proje başı/sonu + bugünden ileri gidilmez.
@@ -225,10 +260,13 @@ export default function DailyReportPage() {
 
   async function downloadDCR() {
     if (!project) return;
+    // PDF ekrandaki son hali yansıtsın — önce kaydet
+    const report = save({ silent: true });
+    if (!report) return;
     const { downloadDCRPDF } = await import("@/lib/pdf/dcr");
     await downloadDCRPDF({
       project,
-      report: existing,
+      report,
       date,
       personnelAttendance,
       machineAttendance,
@@ -236,8 +274,12 @@ export default function DailyReportPage() {
       realized,
       preparedBy: user?.fullName,
     });
-    toast("DCR PDF indirildi", "success");
+    toast("Rapor kaydedildi, DCR PDF indirildi", "success");
   }
+
+  // Eski (otomatik çekilmiş) kayıtlarda listede olmayan bir değer olabilir
+  const weatherOptions = weather && !WEATHER_OPTIONS.includes(weather) ? [weather, ...WEATHER_OPTIONS] : WEATHER_OPTIONS;
+  const windOptions = wind && !WIND_OPTIONS.includes(wind) ? [wind, ...WIND_OPTIONS] : WIND_OPTIONS;
 
   return (
     <>
@@ -247,10 +289,10 @@ export default function DailyReportPage() {
         icon={FileText}
         actions={
           <>
-            <Button variant="outline" onClick={downloadDCR} disabled={!existing && !summary} title="Daily Construction Report — saha mühendisinin imzalanan tek-sayfa A4 raporu">
+            <Button variant="outline" onClick={downloadDCR} title="Daily Construction Report — raporu kaydeder ve imzalanacak A4 PDF üretir">
               <FileText size={14} /> DCR PDF
             </Button>
-            <Button variant="accent" onClick={save}>
+            <Button variant="accent" onClick={() => save()}>
               <Save size={14} /> Kaydet
             </Button>
           </>
@@ -306,67 +348,57 @@ export default function DailyReportPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
-          <CardTitle>
-            Hava Durumu
-            {weather && (
-              <span className="ml-auto text-[10px] text-text3 font-mono">Open-Meteo</span>
-            )}
-          </CardTitle>
-          <div className="space-y-2">
-            {weatherLoading ? (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-bg3 text-text3 text-sm">
-                <RefreshCw size={14} className="animate-spin" />
-                Hava verisi alınıyor…
-              </div>
-            ) : weatherError && !existing?.weather ? (
-              <div className="p-3 rounded-lg bg-yellow/10 border border-yellow/30 text-yellow-dark text-xs">
-                <strong>⚠ Otomatik hava yok:</strong> {weatherError}
-                <div className="mt-1 text-text3">
-                  Hava bilgilerini manuel girebilir veya{" "}
-                  <a href="/settings" className="text-accent underline">
-                    proje ayarları
-                  </a>
-                  &apos;ndan enlem/boylam ekleyebilirsin.
+          <CardTitle>Hava Durumu</CardTitle>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-bg3">
+              {weatherIcon(weather)}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{weather || "Seçilmedi"}</div>
+                <div className="text-xs text-text3 font-mono">
+                  {tempMin || "—"}°C — {tempMax || "—"}°C{wind ? ` · ${wind}` : ""}
                 </div>
               </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-bg3">
-                  {weatherIcon(existing?.weather ?? weather?.condition)}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium">{existing?.weather ?? weather?.condition ?? "—"}</div>
-                    <div className="text-xs text-text3 font-mono">
-                      {existing?.temperatureMin ?? weather?.tempMin ?? "—"}°C —{" "}
-                      {existing?.temperatureMax ?? weather?.tempMax ?? "—"}°C
-                    </div>
-                  </div>
-                  {weather && (
-                    <Badge variant={existing?.weather ? "gray" : "accent"} className="ml-auto">
-                      {existing?.weather ? "kayıtlı" : "otomatik"}
-                    </Badge>
-                  )}
-                </div>
-                {/* Detay satırı — sadece otomatik veride */}
-                {weather && !existing?.weather && (
-                  <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] text-text2 flex-wrap">
-                    <span className="inline-flex items-center gap-1" title="Günlük toplam yağış">
-                      <Droplets size={11} className="text-blue" />
-                      <span className="font-mono">{weather.precipitation.toFixed(1)} mm</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="Maks. rüzgar hızı">
-                      <Wind size={11} className="text-text3" />
-                      <span className="font-mono">{weather.windMax} km/h</span>
-                    </span>
-                  </div>
-                )}
-                {/* İş durdu otomatik bilgilendirme */}
-                {weather?.workStopped && !existing?.weather && (
-                  <Alert variant="warning" className="!py-2 !text-xs">
-                    ⚠ Otomatik tespit: <strong>{weather.workStoppedReason}</strong> — iş durdu bayrağı aktif edildi
-                  </Alert>
-                )}
-              </>
-            )}
+            </div>
+            <Field label="Hava">
+              <Select value={weather} onChange={(e) => setWeather(e.target.value)}>
+                <option value="">— Seçin —</option>
+                {weatherOptions.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Min °C">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={tempMin}
+                  onChange={(e) => setTempMin(e.target.value)}
+                  placeholder="örn. 8"
+                />
+              </Field>
+              <Field label="Maks °C">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={tempMax}
+                  onChange={(e) => setTempMax(e.target.value)}
+                  placeholder="örn. 21"
+                />
+              </Field>
+            </div>
+            <Field label="Rüzgar">
+              <Select value={wind} onChange={(e) => setWind(e.target.value)}>
+                <option value="">— Seçin —</option>
+                {windOptions.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <label className="flex items-center gap-2 cursor-pointer text-sm">
               <input
                 type="checkbox"
@@ -397,22 +429,41 @@ export default function DailyReportPage() {
 
         <Card>
           <CardTitle>Fotoğraflar ({photos.length})</CardTitle>
-          <label className="block w-full cursor-pointer">
-            <input type="file" accept="image/*" multiple capture="environment" onChange={onPhotoChange} className="hidden" />
+          <label className={`block w-full ${photoBusy ? "cursor-wait opacity-60" : "cursor-pointer"}`}>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              onChange={onPhotoChange}
+              disabled={photoBusy}
+              className="hidden"
+            />
             <div className="border-2 border-dashed border-border2 rounded-lg p-4 text-center hover:border-accent/40 transition-colors">
-              <Camera size={24} className="mx-auto text-text3 mb-2" />
-              <div className="text-xs text-text3">Foto çek veya seç</div>
+              {photoBusy ? (
+                <RefreshCw size={24} className="mx-auto text-text3 mb-2 animate-spin" />
+              ) : (
+                <Camera size={24} className="mx-auto text-text3 mb-2" />
+              )}
+              <div className="text-xs text-text3">{photoBusy ? "Fotoğraflar işleniyor…" : "Foto çek veya seç"}</div>
             </div>
           </label>
           {photos.length > 0 && (
             <div className="grid grid-cols-3 gap-2 mt-3">
               {photos.map((p, i) => (
-                <div key={p.uploadedAt + i} className="relative aspect-square rounded-lg overflow-hidden border border-border">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.caption || `Foto ${i + 1}`} className="w-full h-full object-cover" />
+                <div key={p.url + i} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-bg3">
+                  {photoUrls[i] ? (
+                    <a href={photoUrls[i]} target="_blank" rel="noreferrer" title="Büyük göster">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={photoUrls[i]} alt={p.caption || `Foto ${i + 1}`} className="w-full h-full object-cover" />
+                    </a>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] text-text3">…</div>
+                  )}
                   <button
                     onClick={() => removePhoto(i)}
                     className="absolute top-1 right-1 p-1 bg-black/70 rounded-md text-white hover:bg-red/80"
+                    title="Fotoğrafı kaldır"
                   >
                     <X size={12} />
                   </button>
@@ -425,7 +476,7 @@ export default function DailyReportPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
         <Card className="md:col-span-3">
-          <CardTitle>Özet</CardTitle>
+          <CardTitle>Saha Notu / Özet</CardTitle>
           <Textarea
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
@@ -434,7 +485,7 @@ export default function DailyReportPage() {
           />
         </Card>
         <Card>
-          <CardTitle>Sorunlar</CardTitle>
+          <CardTitle>Sorunlar / Engeller</CardTitle>
           <Textarea
             value={issues}
             onChange={(e) => setIssues(e.target.value)}
@@ -443,7 +494,7 @@ export default function DailyReportPage() {
           />
         </Card>
         <Card>
-          <CardTitle>Yarınki Plan</CardTitle>
+          <CardTitle>Yarın İçin Plan</CardTitle>
           <Textarea
             value={tomorrowPlan}
             onChange={(e) => setTomorrowPlan(e.target.value)}
@@ -454,9 +505,8 @@ export default function DailyReportPage() {
         <Card>
           <CardTitle>İpuçları</CardTitle>
           <Alert variant="info">
-            Telefon kamerası kullanılabilir (öndeki/arkadaki). Hava durumu otomatik dolar
-            (Open-Meteo, proje koordinatları). DCR PDF butonu kayıt sonrası imzalanan günlük
-            rapor üretir.
+            Telefon kamerası kullanılabilir. Fotoğraflar otomatik küçültülür ve bu cihazda saklanır.
+            DCR PDF butonu raporu önce kaydeder, sonra imzalanacak günlük raporu üretir.
           </Alert>
         </Card>
         {/* Mobile alt boşluk — sticky bottom action bar için */}
@@ -479,7 +529,7 @@ export default function DailyReportPage() {
           Önceki
         </button>
         <button
-          onClick={save}
+          onClick={() => save()}
           className="flex-[2] h-12 rounded-lg bg-accent text-white flex items-center justify-center gap-2 font-bold text-sm shadow-medium active:scale-95 transition-all"
         >
           <Save size={16} />

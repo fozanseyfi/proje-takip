@@ -9,6 +9,7 @@
  */
 
 import { formatDate, formatMoney, formatNumber, toISODate, daysBetween, spiLevel } from "@/lib/utils";
+import { resolvePhotoUrl } from "@/lib/data/photo-store";
 import { loadingOverlay } from "@/lib/ui-loading";
 import type {
   Project,
@@ -243,7 +244,9 @@ async function _renderManagementReportPDF(input: Input): Promise<void> {
   const latestReport = [...dailyReports]
     .filter((d) => d.projectId === project.id)
     .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
-  const dronePhoto = latestReport?.photos?.[0];
+  const firstPhoto = latestReport?.photos?.[0];
+  const dronePhotoUrl = firstPhoto ? await resolvePhotoUrl(firstPhoto.url) : "";
+  const dronePhoto = firstPhoto && dronePhotoUrl ? { ...firstPhoto, url: dronePhotoUrl } : undefined;
 
   // SPI rengi
   const spiL = spiLevel(spi);

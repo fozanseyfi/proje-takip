@@ -55,6 +55,7 @@ import {
   getEffectiveRange,
 } from "@/lib/calc/predecessors";
 import { endDateFromDuration, workingDates, startDateFromDuration } from "@/lib/calc/distribution";
+import { computeDurationRanges, type DurationRange } from "@/lib/calc/duration-ranges";
 import type { PredecessorType, PredecessorLink, WbsItem } from "@/lib/store/types";
 import dynamic from "next/dynamic";
 import { type CleanupOptions } from "@/components/planning/cleanup-dialog";
@@ -601,66 +602,11 @@ export default function PlanningPage() {
   // Duration ranges — her kalem için (planlı ise) plan tarihleri, (planlı değilse)
   // estimatedDurationDays + workweek + earliestStart üzerinden türetilmiş aralık.
   // Matrix hücre bar overlay'i ve Mini-Gantt bu map'i kullanır.
-  const durationRanges = useMemo(() => {
-    const out = new Map<string, { start: string; end: string; isFromPlan: boolean }>();
-    if (!project) return out;
-    function workweekFlags(ww?: "mon-fri" | "mon-sat" | "mon-sun"): { workSat: boolean; workSun: boolean } {
-      if (ww === "mon-fri") return { workSat: false, workSun: false };
-      if (ww === "mon-sun") return { workSat: true, workSun: true };
-      return { workSat: true, workSun: false }; // mon-sat default
-    }
-    for (const w of leafs) {
-      // MILESTONE — tek tarih (yoksa öncüllere göre veya proje başlangıcına yerleştir)
-      if (w.activityType === "milestone") {
-        if (w.milestoneDate) {
-          out.set(w.code, { start: w.milestoneDate, end: w.milestoneDate, isFromPlan: true });
-        } else {
-          // Tarih atanmamış — Gantt'e yine de ekle ki eksik milestone'lar görünür olsun.
-          // Öncüller varsa earliestStart, yoksa proje başlangıcı.
-          const sch = schedules.get(w.code);
-          const fallback = sch?.earliestStart ?? project.startDate;
-          out.set(w.code, { start: fallback, end: fallback, isFromPlan: false });
-        }
-        continue;
-      }
-      // WORK — önce plana bak
-      const pr = getPlanRange(planned[w.code]);
-      if (pr.start && pr.end) {
-        out.set(w.code, { start: pr.start, end: pr.end, isFromPlan: true });
-        continue;
-      }
-      // Plan yok ama tahmini süre var → bar pozisyonu için anchor seç.
-      //  ALAP: effectiveStart..effectiveEnd (Free Float kadar geri)
-      //  ASAP + FF kısıtı: bitişe sabitle (FF constraint = info.earliestEnd)
-      //  ASAP + sadece FS/SS / kısıtsız: earliestStart..earliestStart+duration
-      const dur = w.estimatedDurationDays;
-      if (dur && dur > 0) {
-        const sch = schedules.get(w.code);
-        const isAlap = w.scheduleType === "alap";
-        const flags = workweekFlags(w.workweek);
-        let start: string;
-        let end: string;
-        if (isAlap && sch?.effectiveStart && sch?.effectiveEnd) {
-          start = sch.effectiveStart;
-          end = sch.effectiveEnd;
-        } else if (sch?.earliestEnd) {
-          // FF constraint var → bitişe sabitle
-          end = sch.earliestEnd;
-          start = startDateFromDuration(end, dur, flags.workSat, flags.workSun);
-          // FS daha sıkıysa fallback
-          if (sch.earliestStart && start < sch.earliestStart) {
-            start = sch.earliestStart;
-            end = endDateFromDuration(start, dur, flags.workSat, flags.workSun);
-          }
-        } else {
-          start = sch?.earliestStart ?? project.startDate;
-          end = endDateFromDuration(start, dur, flags.workSat, flags.workSun);
-        }
-        out.set(w.code, { start, end, isFromPlan: false });
-      }
-    }
-    return out;
-  }, [leafs, planned, project?.startDate, schedules]);
+  const durationRanges = useMemo(
+    () => (project ? computeDurationRanges(leafs, planned, schedules, project.startDate) : new Map<string, DurationRange>()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leafs, planned, project?.startDate, schedules]
+  );
 
   if (!project) {
     return (

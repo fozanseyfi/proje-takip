@@ -262,6 +262,8 @@ export interface DailyReport {
   temperatureMin?: number;
   temperatureMax?: number;
   weatherAutoFetched?: boolean;
+  /** Rüzgar durumu (manuel seçim) — örn. "Hafif rüzgarlı" */
+  wind?: string;
   workStopped: boolean;
   workStoppedReason?: string;
   summary: string;
