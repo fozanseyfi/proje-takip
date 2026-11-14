@@ -64,7 +64,8 @@ const PLATFORMS: PlatformItem[] = [
     subtitle: "Solar yatırım & geri ödeme analizi",
     icon: LineChart,
     tone: "blue",
-    status: "soon",
+    status: "live",
+    href: "https://fizibilite.fozanseyfi.com",
   },
   {
     key: "ges-muh",
