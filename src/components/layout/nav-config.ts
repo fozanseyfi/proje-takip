@@ -29,6 +29,7 @@ import {
   Boxes,
   Database,
   ClipboardCheck,
+  PlayCircle,
 } from "lucide-react";
 
 export type NavTone = "accent" | "blue" | "yellow" | "green" | "purple" | "red" | "gray";
@@ -148,10 +149,11 @@ export const mainNavGroups: NavGroup[] = [
     ],
   },
   {
-    title: "Diğer Platformlar",
+    title: "Platformlarım",
     tone: "yellow",
     items: [
-      { href: "/platforms", label: "Diğer Platformlar", icon: Boxes },
+      { href: "/platform-tanitimi", label: "Platform Tanıtımı", icon: PlayCircle },
+      { href: "/platforms", label: "Platformlarım", icon: Boxes },
     ],
   },
 ];
@@ -168,6 +170,7 @@ const MAIN_SCOPE_PREFIXES = [
   "/notifications",
   "/contact",
   "/platforms",
+  "/platform-tanitimi",
   "/how-it-works",
   "/master",
 ];

@@ -122,6 +122,13 @@
   --color-planned:   var(--planned);
   --color-realized:  var(--realized);
   --color-critical:  var(--critical);
+  /* Ortak (diğer platformlarla aynı) yüzey adları — tanıtım bileşenleri bunları kullanır */
+  --color-card:             var(--surface);
+  --color-foreground:       var(--text);
+  --color-muted-foreground: var(--text-soft);
+  --color-secondary:        var(--bg-muted);
+  --color-muted:            var(--bg-muted);
+  --color-background:       var(--bg-soft);
   --font-sans:    var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-display: var(--font-jakarta), var(--font-inter), sans-serif;
   --font-mono:    var(--font-jetbrains), ui-monospace, monospace;

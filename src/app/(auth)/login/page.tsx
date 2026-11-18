@@ -17,6 +17,7 @@ import { HeroPreviewCard } from "@/components/auth/hero-preview-card";
 import { AuthMissionCard } from "@/components/auth/auth-mission-card";
 import { FeaturesShowcase } from "@/components/auth/features-showcase";
 import { PlatformsRow } from "@/components/auth/platforms-row";
+import { TourLink, TourPromo } from "@/components/auth/tour-promo";
 import { AppFooter } from "@/components/layout/app-footer";
 import { useStore } from "@/lib/store";
 
@@ -46,6 +47,9 @@ export default function LoginPage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <PrivacyBand />
         </section>
+
+        {/* PLATFORM TANITIMI — kayıt olmadan önce gerçek ekranlarla */}
+        <TourPromo />
 
         {/* PLATFORMS ROW */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
@@ -139,6 +143,8 @@ function LoginColumn() {
           </Link>
         </p>
       </div>
+
+      <TourLink />
 
       <AuthMissionCard />
     </div>
