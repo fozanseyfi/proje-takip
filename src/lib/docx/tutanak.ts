@@ -35,8 +35,17 @@ export async function downloadTutanakDocx(project: Project, item: LookaheadItem)
     TableRow,
     TextRun,
     WidthType,
+    TableLayoutType,
     VerticalAlign,
   } = await import("docx");
+
+  // Sabit (DXA) genişlikler — iOS/Android önizleyicileri yüzde genişliği desteklemiyor
+  const PAGE_W = 11906; // A4
+  const MARGIN_X = 1247;
+  const CONTENT_W = PAGE_W - MARGIN_X * 2; // 9412
+  const INFO_COLS = [2300, CONTENT_W - 2300];
+  const SIG_COL = Math.floor(CONTENT_W / 3);
+  const SIG_COLS = [SIG_COL, SIG_COL, CONTENT_W - SIG_COL * 2];
 
   const kind = (item.kind ?? "kritik_is") as LookaheadKind;
   const dateStr = formatDate(item.date);
@@ -70,19 +79,21 @@ export async function downloadTutanakDocx(project: Project, item: LookaheadItem)
     ["Sorumlu", item.owner ?? ""],
   ];
   const infoTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: INFO_COLS,
+    layout: TableLayoutType.FIXED,
     borders: allLines,
     rows: infoRows.map(
       ([k, v]) =>
         new TableRow({
           children: [
             new TableCell({
-              width: { size: 25, type: WidthType.PERCENTAGE },
+              width: { size: INFO_COLS[0], type: WidthType.DXA },
               margins: { top: 80, bottom: 80, left: 120, right: 120 },
               children: [new Paragraph({ children: [run(k, { bold: true })] })],
             }),
             new TableCell({
-              width: { size: 75, type: WidthType.PERCENTAGE },
+              width: { size: INFO_COLS[1], type: WidthType.DXA },
               margins: { top: 80, bottom: 80, left: 120, right: 120 },
               children: [new Paragraph({ children: [run(v)] })],
             }),
@@ -136,9 +147,9 @@ export async function downloadTutanakDocx(project: Project, item: LookaheadItem)
     ["İŞVEREN", project.investorName ?? ""],
     ["KONTROL / MÜŞAVİR", ""],
   ];
-  const sigCell = (title: string, company: string) =>
+  const sigCell = (title: string, company: string, w: number) =>
     new TableCell({
-      width: { size: 33, type: WidthType.PERCENTAGE },
+      width: { size: w, type: WidthType.DXA },
       verticalAlign: VerticalAlign.TOP,
       margins: { top: 80, bottom: 80, left: 80, right: 80 },
       children: [
@@ -148,15 +159,17 @@ export async function downloadTutanakDocx(project: Project, item: LookaheadItem)
           spacing: { after: 240 },
           children: [run(company || " ", { size: 20 })],
         }),
-        new Paragraph({ spacing: { after: 160 }, children: [run("Ad Soyad: ..............................", { size: 20 })] }),
-        new Paragraph({ spacing: { after: 160 }, children: [run("Unvan: ..................................", { size: 20 })] }),
+        new Paragraph({ spacing: { after: 160 }, children: [run("Ad Soyad: .....................", { size: 20 })] }),
+        new Paragraph({ spacing: { after: 160 }, children: [run("Unvan: .........................", { size: 20 })] }),
         new Paragraph({ spacing: { after: 600 }, children: [run("İmza:", { size: 20 })] }),
       ],
     });
   const sigTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: SIG_COLS,
+    layout: TableLayoutType.FIXED,
     borders: noLines,
-    rows: [new TableRow({ children: parties.map(([t, c]) => sigCell(t, c)) })],
+    rows: [new TableRow({ children: parties.map(([t, c], i) => sigCell(t, c, SIG_COLS[i])) })],
   });
 
   const doc = new Document({
@@ -167,8 +180,8 @@ export async function downloadTutanakDocx(project: Project, item: LookaheadItem)
       {
         properties: {
           page: {
-            size: { width: 11906, height: 16838 }, // A4
-            margin: { top: 1134, bottom: 1134, left: 1247, right: 1247 }, // ~2 / 2.2 cm
+            size: { width: PAGE_W, height: 16838 }, // A4
+            margin: { top: 1134, bottom: 1134, left: MARGIN_X, right: MARGIN_X }, // ~2 / 2.2 cm
           },
         },
         children: [
