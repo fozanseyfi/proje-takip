@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Plus, Trash2, CheckCircle2, FileDown } from "lucide-react";
 import { useStore, useCurrentProject } from "@/lib/store";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { confirmAction } from "@/components/ui/confirm";
 import { formatDate, toISODate, cn, addDays, daysBetween } from "@/lib/utils";
-import type { Priority, LookaheadKind } from "@/lib/store/types";
+import type { Priority, LookaheadKind, LookaheadItem } from "@/lib/store/types";
+import { useToast } from "@/components/ui/toast";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   low: "Düşük",
@@ -86,6 +87,18 @@ export default function LookaheadPage() {
   }, [items]);
 
   const today = toISODate(new Date());
+  const toast = useToast((s) => s.push);
+
+  async function downloadWord(it: LookaheadItem) {
+    if (!project) return;
+    try {
+      const { downloadTutanakDocx } = await import("@/lib/docx/tutanak");
+      await downloadTutanakDocx(project, it);
+    } catch (err) {
+      console.error(err);
+      toast("Word tutanağı oluşturulamadı", "error");
+    }
+  }
 
   if (!project)
     return (
@@ -141,64 +154,18 @@ export default function LookaheadPage() {
               Aktif kayıt yok 🎉 — kapanan konuları aşağıdan görebilirsiniz.
             </Card>
           ) : (
-            <div className="space-y-2 mb-6">
-              {activeItems.map((it) => {
-                const daysLeft = daysBetween(today, it.date);
-                const overdue = daysLeft < 0;
-                const kind = (it.kind ?? "kritik_is") as LookaheadKind;
-                const ks = KIND_STYLES[kind];
-                return (
-                  <Card
-                    key={it.id}
-                    className={cn(
-                      "!p-3 flex items-start gap-3 transition-all !border-l-4",
-                      overdue && "border-red/40",
-                      ks.border.replace("border-", "border-l-")
-                    )}
-                  >
-                    <button
-                      onClick={() => toggle(it.id)}
-                      className="mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 border-text3 hover:border-accent hover:bg-accent/10"
-                      title="Tamamlandı olarak işaretle"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className={cn("text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded", ks.bg, ks.text)}>
-                          {KIND_LABEL[kind]}
-                        </span>
-                        <span className="font-medium text-text">{it.task}</span>
-                      </div>
-                      {it.notes && <div className="text-xs text-text3 mt-0.5">{it.notes}</div>}
-                      <div className="flex items-center gap-3 mt-1.5 text-xs">
-                        <Badge variant={PRIORITY_VARIANT[it.priority]}>{PRIORITY_LABEL[it.priority]}</Badge>
-                        <span className="text-text3">
-                          📅 {formatDate(it.date)}
-                          <span
-                            className={cn(
-                              "ml-1",
-                              daysLeft < 0 ? "text-red" : daysLeft <= 3 ? "text-yellow" : "text-text3"
-                            )}
-                          >
-                            ({daysLeft < 0 ? `${-daysLeft} gün gecikme` : `${daysLeft} gün`})
-                          </span>
-                        </span>
-                        {it.owner && <span className="text-text3">👤 {it.owner}</span>}
-                      </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (await confirmAction({ title: "Kayıt silinsin mi?", message: "Bu kritik iş / tutanak kaydı silinecek.", danger: true, confirmText: "Sil" })) {
-                          del(it.id);
-                        }
-                      }}
-                      className="p-1.5 text-text3 hover:text-red rounded shrink-0"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </Card>
-                );
-              })}
-            </div>
+            <ItemsTable
+              items={activeItems}
+              done={false}
+              today={today}
+              onToggle={toggle}
+              onWord={downloadWord}
+              onDelete={async (id) => {
+                if (await confirmAction({ title: "Kayıt silinsin mi?", message: "Bu kritik iş / tutanak kaydı silinecek.", danger: true, confirmText: "Sil" })) {
+                  del(id);
+                }
+              }}
+            />
           )}
 
           {/* KAPANAN KONULAR — collapsible */}
@@ -216,46 +183,18 @@ export default function LookaheadPage() {
                 </span>
               </summary>
               <div className="border-t border-border bg-white">
-                <div className="divide-y divide-border">
-                  {doneItems.map((it) => {
-                    const kind = (it.kind ?? "kritik_is") as LookaheadKind;
-                    const ks = KIND_STYLES[kind];
-                    return (
-                      <div key={it.id} className="flex items-start gap-3 p-3 hover:bg-bg2/40">
-                        <button
-                          onClick={() => toggle(it.id)}
-                          className="mt-0.5 w-5 h-5 rounded-md bg-green border-green flex items-center justify-center shrink-0"
-                          title="Aktife döndür"
-                        >
-                          <CheckCircle2 size={12} className="text-white" />
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span className={cn("text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded", ks.bg, ks.text)}>
-                              {KIND_LABEL[kind]}
-                            </span>
-                            <span className="text-sm font-medium text-text2 line-through">{it.task}</span>
-                          </div>
-                          <div className="text-[11px] text-text3">
-                            Kapatıldı · {formatDate(it.date)}
-                            {it.owner && <span> · {it.owner}</span>}
-                          </div>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            if (await confirmAction({ title: "Kalıcı silme", message: "Bu kayıt kalıcı olarak silinecek, geri yüklenemez.", danger: true, confirmText: "Kalıcı Sil" })) {
-                              del(it.id);
-                            }
-                          }}
-                          className="p-1.5 text-text3 hover:text-red rounded shrink-0"
-                          title="Kalıcı sil"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ItemsTable
+                  items={doneItems}
+                  done
+                  today={today}
+                  onToggle={toggle}
+                  onWord={downloadWord}
+                  onDelete={async (id) => {
+                    if (await confirmAction({ title: "Kalıcı silme", message: "Bu kayıt kalıcı olarak silinecek, geri yüklenemez.", danger: true, confirmText: "Kalıcı Sil" })) {
+                      del(id);
+                    }
+                  }}
+                />
               </div>
             </details>
           )}
@@ -277,6 +216,106 @@ export default function LookaheadPage() {
         }}
       />
     </>
+  );
+}
+
+function ItemsTable({
+  items,
+  done,
+  today,
+  onToggle,
+  onWord,
+  onDelete,
+}: {
+  items: LookaheadItem[];
+  done: boolean;
+  today: string;
+  onToggle: (id: string) => void;
+  onWord: (it: LookaheadItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  const th = "px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-text3 whitespace-nowrap";
+  const td = "px-3 py-2.5 align-top";
+  return (
+    <div className={cn("overflow-x-auto bg-white", !done && "rounded-xl border border-border mb-6")}>
+      <table className="w-full text-sm">
+        <thead className="bg-bg2/60 border-b border-border">
+          <tr>
+            <th className={cn(th, "w-10")} aria-label="Durum" />
+            <th className={th}>Tip</th>
+            <th className={cn(th, "min-w-[260px]")}>Konu</th>
+            <th className={th}>Tarih</th>
+            {!done && <th className={th}>Kalan</th>}
+            <th className={th}>Öncelik</th>
+            <th className={th}>Sorumlu</th>
+            <th className={cn(th, "text-right")}>Tutanak</th>
+            <th className={cn(th, "w-10")} aria-label="Sil" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {items.map((it) => {
+            const kind = (it.kind ?? "kritik_is") as LookaheadKind;
+            const ks = KIND_STYLES[kind];
+            const daysLeft = daysBetween(today, it.date);
+            return (
+              <tr key={it.id} className="hover:bg-bg2/40">
+                <td className={td}>
+                  <button
+                    onClick={() => onToggle(it.id)}
+                    className={cn(
+                      "w-5 h-5 rounded-md border flex items-center justify-center transition-all",
+                      done ? "bg-green border-green" : "border-text3 hover:border-accent hover:bg-accent/10"
+                    )}
+                    title={done ? "Aktife döndür" : "Tamamlandı olarak işaretle"}
+                  >
+                    {done && <CheckCircle2 size={12} className="text-white" />}
+                  </button>
+                </td>
+                <td className={td}>
+                  <span className={cn("text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded whitespace-nowrap", ks.bg, ks.text)}>
+                    {KIND_LABEL[kind]}
+                  </span>
+                </td>
+                <td className={td}>
+                  <div className={cn("font-medium", done ? "text-text2 line-through" : "text-text")}>{it.task}</div>
+                  {it.notes && <div className="text-xs text-text3 mt-0.5 whitespace-pre-line">{it.notes}</div>}
+                </td>
+                <td className={cn(td, "font-mono text-xs whitespace-nowrap")}>{formatDate(it.date)}</td>
+                {!done && (
+                  <td
+                    className={cn(
+                      td,
+                      "text-xs whitespace-nowrap",
+                      daysLeft < 0 ? "text-red font-semibold" : daysLeft <= 3 ? "text-yellow" : "text-text3"
+                    )}
+                  >
+                    {daysLeft < 0 ? `${-daysLeft} gün gecikme` : `${daysLeft} gün`}
+                  </td>
+                )}
+                <td className={td}>
+                  <Badge variant={PRIORITY_VARIANT[it.priority]}>{PRIORITY_LABEL[it.priority]}</Badge>
+                </td>
+                <td className={cn(td, "text-xs text-text2 whitespace-nowrap")}>{it.owner ?? "—"}</td>
+                <td className={cn(td, "text-right")}>
+                  <Button variant="outline" size="sm" onClick={() => onWord(it)} title="İmzaya hazır Word tutanağı indir">
+                    <FileDown size={13} /> Word
+                  </Button>
+                </td>
+                <td className={td}>
+                  <button
+                    onClick={() => onDelete(it.id)}
+                    className="p-1.5 text-text3 hover:text-red rounded"
+                    title={done ? "Kalıcı sil" : "Sil"}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
