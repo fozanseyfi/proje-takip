@@ -28,7 +28,11 @@ export const metadata: Metadata = {
   description: "EPC odaklı proje yönetim platformu — GES, RES, HES ve diğer altyapı projeleri",
   applicationName: "Proje Takip",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico",
     apple: "/apple-icon.png",
   },
   appleWebApp: {
