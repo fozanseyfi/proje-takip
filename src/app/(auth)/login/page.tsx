@@ -38,7 +38,10 @@ export default function LoginPage() {
           </div>
         </section>
 
-        {/* FEATURES SHOWCASE */}
+        {/* PLATFORM TANITIMI — kayıt olmadan önce gerçek ekranlarla (hero'nun hemen altında) */}
+        <TourPromo />
+
+        {/* FEATURES SHOWCASE — Nasıl Çalışır */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <FeaturesShowcase />
         </section>
@@ -47,9 +50,6 @@ export default function LoginPage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <PrivacyBand />
         </section>
-
-        {/* PLATFORM TANITIMI — kayıt olmadan önce gerçek ekranlarla */}
-        <TourPromo />
 
         {/* PLATFORMS ROW */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
