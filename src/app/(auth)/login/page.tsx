@@ -6,9 +6,7 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  ShieldCheck,
   Sparkles,
-  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
@@ -44,11 +42,6 @@ export default function LoginPage() {
         {/* FEATURES SHOWCASE — Nasıl Çalışır */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
           <FeaturesShowcase />
-        </section>
-
-        {/* PRIVACY BAND */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-          <PrivacyBand />
         </section>
 
         {/* PLATFORMS ROW */}
@@ -147,46 +140,6 @@ function LoginColumn() {
       <TourLink />
 
       <AuthMissionCard />
-    </div>
-  );
-}
-
-function PrivacyBand() {
-  const items = [
-    "Tüm proje, puantaj, fatura ve personel verileri yalnızca sizin hesabınızda izole tutulur.",
-    "Geliştirici dahil hiçbir üçüncü taraf proje verilerinizi göremez veya indiremez.",
-    "Veriler şifreli aktarılır, RLS politikaları ile DB seviyesinde korunur.",
-    "İstediğin zaman tüm verilerini Excel/PDF olarak indir veya hesabını sil — limit yok.",
-  ];
-  return (
-    <div className="rounded-2xl border border-green/30 bg-gradient-to-br from-green/8 via-white to-white p-6 md:p-8">
-      <div className="flex items-start gap-4">
-        <span className="inline-flex items-center justify-center size-12 rounded-xl bg-green text-white shadow-sm shrink-0">
-          <ShieldCheck className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[1.4px] text-green">
-            <Sparkles className="size-3" />
-            Veri Gizliliği
-          </div>
-          <h3 className="font-display text-xl md:text-2xl font-extrabold tracking-tight text-text mt-1.5">
-            Verileriniz sadece sizin
-          </h3>
-          <p className="text-sm text-text2 mt-1.5 max-w-3xl leading-relaxed">
-            Platform; gizlilik prensiplerini birinci önceliği olarak tutar. KVKK uyumlu, RLS korumalı,
-            şeffaf veri politikası — sektörde size güveni hak eden bir araç.
-          </p>
-
-          <ul className="mt-4 grid sm:grid-cols-2 gap-x-6 gap-y-2">
-            {items.map((it, i) => (
-              <li key={i} className="flex items-start gap-2 text-[13px] text-text2 leading-relaxed">
-                <Check className="size-4 text-green mt-0.5 shrink-0" />
-                <span>{it}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
     </div>
   );
 }
