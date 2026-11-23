@@ -1,84 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Lock,
-  Mail,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
-import { AuthHeader } from "@/components/auth/auth-header";
-import { HeroPreviewCard } from "@/components/auth/hero-preview-card";
-import { AuthMissionCard } from "@/components/auth/auth-mission-card";
-import { FeaturesShowcase } from "@/components/auth/features-showcase";
-import { PlatformsRow } from "@/components/auth/platforms-row";
-import { TourLink, TourPromo } from "@/components/auth/tour-promo";
-import { AppFooter } from "@/components/layout/app-footer";
+import { LoginKitPage } from "@/components/auth/login-kit";
+import { LOGIN_PLATFORM } from "@/lib/login-platform";
 import { useStore } from "@/lib/store";
 
+/*
+ * Giriş sayfası. Görünüm bütün platformlarda ortak (components/auth/login-kit.tsx);
+ * bu platforma özgü tanıtım ve ekranlar lib/login-platform.tsx'te.
+ * Demo girişi: şifre kontrolü yok, e-posta ile oturum açılır.
+ */
 export default function LoginPage() {
-  return (
-    <div className="min-h-screen flex flex-col bg-bg-soft">
-      <AuthHeader />
-
-      <main className="flex-1">
-        {/* HERO — sol: form, sağ: başlık + canlı demo (sağ daha geniş) */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 lg:pt-12 lg:pb-16">
-          <div className="grid lg:grid-cols-[440px_1fr] xl:grid-cols-[460px_1fr] gap-8 lg:gap-12 items-start">
-            <LoginColumn />
-            <div className="space-y-5 lg:space-y-6">
-              <HeroHeader />
-              <HeroPreviewCard />
-            </div>
-          </div>
-        </section>
-
-        {/* PLATFORM TANITIMI — kayıt olmadan önce gerçek ekranlarla (hero'nun hemen altında) */}
-        <TourPromo />
-
-        {/* FEATURES SHOWCASE — Nasıl Çalışır */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-          <FeaturesShowcase />
-        </section>
-
-        {/* PLATFORMS ROW */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-          <PlatformsRow />
-        </section>
-      </main>
-
-      <AppFooter />
-    </div>
-  );
-}
-
-function HeroHeader() {
-  return (
-    <div>
-      <div className="inline-flex items-center gap-1.5 rounded-full border border-yellow/40 bg-yellow/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[1.5px] text-yellow">
-        <Sparkles className="size-3" />
-        Bağımsız Bir İnisiyatif
-      </div>
-      <h1 className="mt-3 font-display text-[36px] md:text-[44px] xl:text-[48px] font-extrabold text-text tracking-tight leading-[1.05]">
-        Tüm projelerinizi<br />
-        <span className="text-shimmer">tek panelden</span> yönetin.
-      </h1>
-      <p className="mt-3 text-[15px] md:text-base text-text2 leading-relaxed max-w-2xl">
-        GES, RES, HES ve EPC projelerinde milestone, takım yükü, finansal takip ve rol bazlı erişim —
-        hepsi tek panelde. Devam etmek için giriş yapın.
-      </p>
-    </div>
-  );
-}
-
-function LoginColumn() {
   const router = useRouter();
   const login = useStore((s) => s.login);
 
-  function submit(e: React.FormEvent<HTMLFormElement>) {
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const email = new FormData(e.currentTarget).get("email");
     login(typeof email === "string" ? email : undefined);
@@ -86,60 +22,9 @@ function LoginColumn() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* LOGIN CARD */}
-      <div className="rounded-2xl border border-border bg-white p-6 shadow-medium">
-        <h2 className="font-display text-xl font-extrabold text-text tracking-tight mb-1">Hoş Geldiniz</h2>
-        <p className="text-sm text-text2 mb-5">Devam etmek için giriş yapın.</p>
-        <form onSubmit={submit} className="space-y-4">
-          <Field label="E-posta">
-            <div className="relative">
-              <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text3" />
-              <Input
-                type="email"
-                name="email"
-                defaultValue="ozan.seyfi@kontrolmatik.com"
-                className="pl-10 h-11"
-                placeholder="ornek@firma.com"
-              />
-            </div>
-          </Field>
-          <Field label="Şifre">
-            <div className="relative">
-              <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text3" />
-              <Input
-                type="password"
-                defaultValue="demo"
-                className="pl-10 h-11"
-                placeholder="••••••••"
-              />
-            </div>
-          </Field>
-          <div className="flex items-center justify-between text-sm pt-1">
-            <label className="flex items-center gap-2 text-text2 cursor-pointer select-none">
-              <input type="checkbox" className="accent-accent w-4 h-4 rounded" />
-              Beni hatırla
-            </label>
-            <Link href="/forgot-password" className="text-accent hover:underline font-semibold">
-              Şifremi unuttum
-            </Link>
-          </div>
-          <Button variant="accent" size="lg" className="w-full" type="submit">
-            Giriş Yap <ArrowRight size={14} />
-          </Button>
-        </form>
-
-        <p className="text-xs text-text3 mt-5 text-center">
-          Hesabın yok mu?{" "}
-          <Link href="/portfolio" className="text-accent font-bold hover:underline">
-            Hemen kayıt ol →
-          </Link>
-        </p>
-      </div>
-
-      <TourLink />
-
-      <AuthMissionCard />
-    </div>
+    <LoginKitPage
+      platform={LOGIN_PLATFORM}
+      form={{ onSubmit, defaultEmail: "ozan.seyfi@kontrolmatik.com", defaultPassword: "demo" }}
+    />
   );
 }
