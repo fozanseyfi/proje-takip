@@ -31,6 +31,8 @@ export interface DCRInput {
   wbs: WbsItem[];
   /** Realized data — wbs code → date → qty */
   realized: Record<string, Record<string, number>>;
+  /** Planlanan data — wbs code → date → qty (bugüne kadar plan için) */
+  planned?: Record<string, Record<string, number>>;
   /** Hazırlayan adı (saha mühendisi) — boş ise "Saha Mühendisi" yazılır */
   preparedBy?: string;
 }
@@ -54,7 +56,7 @@ export async function downloadDCRPDF(input: DCRInput): Promise<void> {
 }
 
 async function _renderDCR(input: DCRInput): Promise<void> {
-  const { project, report, date, personnelAttendance, machineAttendance, wbs, realized, preparedBy } = input;
+  const { project, report, date, personnelAttendance, machineAttendance, wbs, realized, planned = {}, preparedBy } = input;
   const today = formatDate(toISODate(new Date()));
   const A4_PX_W = 794;
 
@@ -84,19 +86,38 @@ async function _renderDCR(input: DCRInput): Promise<void> {
   const machineHours = machinePresent.reduce((s, a) => s + (a.hours || 0), 0);
 
   // O gün gerçekleşen WBS aktiviteleri
-  const realizedToday: Array<{ code: string; name: string; qty: number; unit: string; cumPct: number }> = [];
+  const realizedToday: Array<{
+    code: string;
+    name: string;
+    qty: number;
+    unit: string;
+    total: number;
+    planCum: number;
+    cumQty: number;
+    remaining: number;
+    cumPct: number;
+    planPct: number;
+  }> = [];
   for (const w of wbs) {
     if (!w.isLeaf || w.deletedAt) continue;
     const qty = realized[w.code]?.[date];
     if (qty == null || qty <= 0) continue;
     const cumQty = sumByDateMap(realized, w.code, date);
-    const cumPct = w.quantity > 0 ? Math.min(100, (cumQty / w.quantity) * 100) : 0;
+    const total = w.quantity || 0;
+    const planCum = sumByDateMap(planned, w.code, date);
+    const cumPct = total > 0 ? Math.min(100, (cumQty / total) * 100) : 0;
+    const planPct = total > 0 ? Math.min(100, (planCum / total) * 100) : 0;
     realizedToday.push({
       code: w.code,
       name: w.name,
       qty,
       unit: w.unit || "",
+      total,
+      planCum,
+      cumQty,
+      remaining: Math.max(0, total - cumQty),
       cumPct,
+      planPct,
     });
   }
   realizedToday.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
@@ -121,16 +142,25 @@ async function _renderDCR(input: DCRInput): Promise<void> {
     : [];
 
   const realizedRows = realizedToday.length === 0
-    ? `<tr><td colspan="5" style="padding:14px; text-align:center; color:#94a3b8; border:1px solid #e5e7eb;">Bu gün için kayıtlı gerçekleşme yok.</td></tr>`
-    : realizedToday.map((r) => `
+    ? `<tr><td colspan="10" style="padding:14px; text-align:center; color:#94a3b8; border:1px solid #e5e7eb;">Bu gün için kayıtlı gerçekleşme yok.</td></tr>`
+    : realizedToday.map((r) => {
+      const dev = r.cumQty - r.planCum; // + önde, − geride
+      const devColor = Math.abs(dev) < 1e-9 ? "#475569" : dev > 0 ? "#047857" : "#b91c1c";
+      return `
       <tr>
-        <td style="padding:6px 8px; border:1px solid #e5e7eb; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:9.5px; color:#475569; font-weight:700;">${escapeHtml(r.code)}</td>
-        <td style="padding:6px 8px; border:1px solid #e5e7eb; font-size:11px;">${escapeHtml(r.name)}</td>
-        <td style="padding:6px 8px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px; font-weight:700; color:#047857;">${formatNumber(r.qty, 1)}</td>
-        <td style="padding:6px 8px; border:1px solid #e5e7eb; font-size:10.5px; color:#64748b;">${escapeHtml(r.unit)}</td>
-        <td style="padding:6px 8px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px; color:${r.cumPct >= 100 ? "#047857" : "#0f172a"}; font-weight:700;">${r.cumPct.toFixed(1)}%</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:9px; color:#475569; font-weight:700;">${escapeHtml(r.code)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-size:10.5px;">${escapeHtml(r.name)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-size:10px; color:#64748b;">${escapeHtml(r.unit)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:#0f172a;">${formatNumber(r.total, 1)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:#047857;">${formatNumber(r.qty, 1)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:#1d4ed8;">${formatNumber(r.planCum, 1)}<div style="font-size:8.5px; color:#64748b;">%${r.planPct.toFixed(1)}</div></td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:#0f172a;">${formatNumber(r.cumQty, 1)}<div style="font-size:8.5px; color:#64748b;">%${r.cumPct.toFixed(1)}</div></td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:${r.remaining <= 0 ? "#047857" : "#0f172a"};">${formatNumber(r.remaining, 1)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:${devColor};">${dev > 0 ? "+" : ""}${formatNumber(dev, 1)}</td>
+        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:${r.planCum > 0 ? (r.cumQty >= r.planCum ? "#047857" : "#b91c1c") : "#475569"};">${r.planCum > 0 ? "%" + ((r.cumQty / r.planCum) * 100).toFixed(0) : "—"}</td>
       </tr>
-    `).join("");
+    `;
+    }).join("");
 
   const photosHtml = photoUrls.length > 0
     ? `<div style="margin-top:14px;">
@@ -198,16 +228,21 @@ async function _renderDCR(input: DCRInput): Promise<void> {
       <!-- GERÇEKLEŞEN AKTİVİTELER TABLOSU -->
       <div style="margin-top:14px;">
         <div style="background:linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
-          Gerçekleşen Aktiviteler (Bu Gün)
+          Gerçekleşen Aktiviteler — Bu Gün ve Bugüne Kadar
         </div>
         <table style="width:100%; border-collapse:collapse; border:1px solid #e5e7eb; border-top:none;">
           <thead>
             <tr style="background:#f8fafc;">
-              <th style="padding:6px 8px; border:1px solid #e5e7eb; text-align:left; font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.4px;">WBS</th>
-              <th style="padding:6px 8px; border:1px solid #e5e7eb; text-align:left; font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.4px;">Kalem</th>
-              <th style="padding:6px 8px; border:1px solid #e5e7eb; text-align:right; font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.4px;">Bu Gün</th>
-              <th style="padding:6px 8px; border:1px solid #e5e7eb; text-align:left; font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.4px;">Birim</th>
-              <th style="padding:6px 8px; border:1px solid #e5e7eb; text-align:right; font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.4px;">Kümül. %</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">WBS</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Kalem</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Birim</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Toplam</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Bu Gün</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Plan<br>(Bugüne Kadar)</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Gerçekleşen<br>(Bugüne Kadar)</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Kalan</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Sapma</th>
+              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Gerç. /<br>Plan</th>
             </tr>
           </thead>
           <tbody>

@@ -17,7 +17,7 @@ import {
   Save,
   RefreshCw,
 } from "lucide-react";
-import { useStore, useCurrentProject, useCurrentUser, useProjectWbs, useProjectRealized } from "@/lib/store";
+import { useStore, useCurrentProject, useCurrentUser, useProjectWbs, useProjectPlanned, useProjectRealized } from "@/lib/store";
 import type { DailyReport } from "@/lib/store/types";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/layout/page-header";
@@ -87,6 +87,7 @@ export default function DailyReportPage() {
   const machineAttendance = useStore((s) => s.machineAttendance);
   const wbs = useProjectWbs(project?.id);
   const realized = useProjectRealized(project?.id);
+  const planned = useProjectPlanned(project?.id);
 
   const [date, setDate] = useState(toISODate(new Date()));
 
@@ -272,6 +273,7 @@ export default function DailyReportPage() {
       machineAttendance,
       wbs,
       realized,
+      planned,
       preparedBy: user?.fullName,
     });
     toast("Rapor kaydedildi, DCR PDF indirildi", "success");
