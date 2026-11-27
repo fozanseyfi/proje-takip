@@ -1,14 +1,25 @@
 /**
- * Yönetim Özeti PDF — Direktör/Patron için yapılandırılmış executive rapor.
+ * Yönetim Özeti PDF — Direktör / Patron için kurumsal proje durum raporu.
  *
- * - Dashboard'da görünen TÜM özetleri içerir (KPI, S-curve, bölüm S-curve, finansal,
- *   adam-saat firma dağılımı, personel headcount, makine headcount, procurement,
- *   kritik işler, claim/tutanak, son faaliyet, saha foto, künye).
- * - Sayfa geçişleri bölüm sınırlarında kırılır (mid-content kesim olmaz).
- * - S-curve inline SVG ile çizilir (gerçek veri ile).
+ * Ekran görüntüsü (html2canvas) DEĞİL: jsPDF + jspdf-autotable ile doğrudan
+ * vektörel çizilir. Metinler seçilebilir/aranabilir, tablolar sayfa sonunda
+ * düzgün bölünür, grafikler her zoom seviyesinde keskin kalır.
+ *
+ * Yapı:
+ *   Kapak       — proje kimliği, genel durum, manşet göstergeler, içindekiler
+ *   01 Yönetici Özeti       — değerlendirme + KPI + öne çıkan hususlar
+ *   02 İlerleme Durumu      — S-eğrisi + bölüm bazında ilerleme
+ *   03 Son 7 Gün Faaliyetleri
+ *   04 Kaynak Durumu        — personel / makine / adam-saat
+ *   05 Finansal Durum
+ *   06 Satın Alma ve Tedarik
+ *   07 Kritik İşler ve Aksiyon Planı
+ *   08 Saha Durumu          — son günlük rapor notları + fotoğraflar
+ *   09 Proje Künyesi ve Onay
+ * Her iç sayfada üst bilgi + alt bilgi (Sayfa x / y).
  */
 
-import { formatDate, formatMoney, formatNumber, toISODate, daysBetween, spiLevel } from "@/lib/utils";
+import { formatDate, formatNumber, toISODate, daysBetween, spiLevel } from "@/lib/utils";
 import { resolvePhotoUrl } from "@/lib/data/photo-store";
 import { loadingOverlay } from "@/lib/ui-loading";
 import type {
@@ -24,26 +35,13 @@ import type {
   PersonnelMaster,
   MachineMaster,
 } from "@/lib/store/types";
-import {
-  computeProgress,
-  buildSCurve,
-  getAllDates,
-  type SCurvePoint,
-} from "@/lib/calc/progress";
+import { computeProgress, buildSCurve, sumByDateMap, type SCurvePoint } from "@/lib/calc/progress";
 import {
   computeSectionProgress,
-  buildSectionSCurve,
   procurementFollowup,
   manhourByDiscipline,
   getDisciplineLabel,
 } from "@/lib/calc/sections";
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Taslak",
-  active: "Aktif",
-  completed: "Tamamlandı",
-  archived: "Arşivlendi",
-};
 
 interface Input {
   project: Project;
@@ -62,82 +60,163 @@ interface Input {
   preparedBy?: string;
 }
 
-function escapeHtml(s: unknown): string {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// ─── Kurumsal palet (lacivert ağırlıklı, az renk) ───
+type RGB = [number, number, number];
+const NAVY_DEEP: RGB = [14, 42, 94];
+const NAVY: RGB = [30, 58, 110];
+const INK: RGB = [26, 36, 54];
+const MUTED: RGB = [106, 116, 136];
+const LINE: RGB = [217, 224, 236];
+const SOFT: RGB = [245, 247, 250];
+const PLAN: RGB = [136, 146, 164];
+const GOOD: RGB = [47, 107, 79];
+const WARN: RGB = [168, 107, 18];
+const BAD: RGB = [154, 59, 64];
+const WHITE: RGB = [255, 255, 255];
+const COVER_SUB: RGB = [183, 196, 222];
+const COVER_LABEL: RGB = [143, 163, 201];
+
+// ─── Sayfa geometrisi (mm) ───
+const PW = 210;
+const PH = 297;
+const ML = 16;
+const MR = 16;
+const CW = PW - ML - MR; // 178
+const TOP = 24;
+const BOTTOM = 280;
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Taslak",
+  active: "Aktif",
+  completed: "Tamamlandı",
+  archived: "Arşivlendi",
+};
+const KIND_LABEL: Record<string, string> = {
+  kritik_is: "Kritik İş",
+  claim: "Claim",
+  tutanak: "Tutanak",
+  yazisma: "Yazışma",
+  ihbar: "İhbar",
+};
+const PRIORITY_LABEL: Record<string, string> = {
+  critical: "Kritik",
+  high: "Yüksek",
+  medium: "Orta",
+  low: "Düşük",
+};
 
 export async function downloadManagementReportPDF(input: Input): Promise<void> {
   loadingOverlay.start("Yönetim raporu hazırlanıyor");
   try {
-    return await _renderManagementReportPDF(input);
+    return await renderReport(input);
   } finally {
     loadingOverlay.stop();
   }
 }
 
-async function _renderManagementReportPDF(input: Input): Promise<void> {
+async function fetchFontB64(path: string): Promise<string> {
+  const resp = await fetch(path);
+  if (!resp.ok) throw new Error(`Font yüklenemedi: ${path}`);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return btoa(binary);
+}
+
+/** Para — Geist'te ₺ glifi yok; para birimi kodu ile yazılır. */
+function money(v: number, currency: string): string {
+  const code = currency === "TRY" ? "TL" : currency;
+  return `${formatNumber(v, 0)} ${code}`;
+}
+const pct1 = (v: number) => `%${formatNumber(v, 1)}`;
+const qty = (v: number) => formatNumber(v, Math.abs(v) >= 1000 ? 0 : 1);
+const spiTxt = (v: number | null | undefined) => (v == null ? "—" : formatNumber(v, 2));
+const cap = (t: string) => (t ? t.charAt(0).toLocaleUpperCase("tr-TR") + t.slice(1) : t);
+const signed = (v: number, d = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${formatNumber(Math.abs(v), d)}`;
+
+/** Fotoğrafı istenen orana kırpıp (cover) JPEG data URL'e çevirir. */
+async function coverImage(url: string, wMm: number, hMm: number): Promise<string | null> {
+  if (!url) return null;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  const ok = await new Promise<boolean>((res) => {
+    img.onload = () => res(true);
+    img.onerror = () => res(false);
+    img.src = url;
+    setTimeout(() => res(img.complete && img.naturalWidth > 0), 6000);
+  });
+  if (!ok || !img.naturalWidth) return null;
+  const pxW = Math.round(wMm * 9);
+  const pxH = Math.round(hMm * 9);
+  const c = document.createElement("canvas");
+  c.width = pxW;
+  c.height = pxH;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  const s = Math.max(pxW / img.naturalWidth, pxH / img.naturalHeight);
+  const dw = img.naturalWidth * s;
+  const dh = img.naturalHeight * s;
+  g.drawImage(img, (pxW - dw) / 2, (pxH - dh) / 2, dw, dh);
+  try {
+    return c.toDataURL("image/jpeg", 0.85);
+  } catch {
+    return null;
+  }
+}
+
+async function renderReport(input: Input): Promise<void> {
   const {
     project, wbs, planned, realized, billing, procurement, lookahead,
     personnelAttendance, machineAttendance, dailyReports, personnel, machines,
     panelName, preparedBy,
   } = input;
 
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+  const [{ default: jsPDF }, autoTableMod, fReg, fBold] = await Promise.all([
     import("jspdf"),
-    import("html2canvas-pro"),
+    import("jspdf-autotable"),
+    fetchFontB64("/fonts/Geist-Regular.ttf"),
+    fetchFontB64("/fonts/Geist-Bold.ttf"),
   ]);
-
-  // Geist fontu — footer text'lerinde Türkçe karakter desteği için (ç/ğ/ş/ı).
-  // jsPDF default Helvetica WinAnsi-1252 dışı karakterleri bozar.
-  const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-  if (!fontResp.ok) throw new Error("Geist fontu yüklenemedi");
-  const fontBuf = await fontResp.arrayBuffer();
-  const fontB64 = (() => {
-    const bytes = new Uint8Array(fontBuf);
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(
-        null,
-        Array.from(bytes.subarray(i, i + chunk))
-      );
-    }
-    return btoa(binary);
-  })();
+  const autoTable = autoTableMod.default;
 
   // ════════════════════════════════════════════════════════════════════
   // HESAPLAMALAR
   // ════════════════════════════════════════════════════════════════════
-  const wbsItems = wbs.map((w) => ({ code: w.code, isLeaf: w.isLeaf, quantity: w.quantity, weight: w.weight }));
-  const { planPct, realPct, spi } = computeProgress(wbsItems, planned, realized, project.reportDate);
-  const sections = computeSectionProgress(wbs, planned, realized, project.reportDate, 1);
-  const sCurve = buildSCurve(wbsItems, planned, realized, project.reportDate);
-  const allDates = getAllDates(planned, realized);
+  const today = project.reportDate;
+  const brand = panelName ?? "Proje Yönetim Platformu";
+  const cur = project.budgetCurrency;
 
-  const elapsed = Math.max(0, daysBetween(project.startDate, project.reportDate) + 1);
-  const remaining = Math.max(0, project.durationDays - elapsed);
-  const durationPct = project.durationDays > 0 ? (elapsed / project.durationDays) * 100 : 0;
+  const wbsItems = wbs.map((w) => ({ code: w.code, isLeaf: w.isLeaf, quantity: w.quantity, weight: w.weight }));
+  const { planPct, realPct, spi } = computeProgress(wbsItems, planned, realized, today);
+  const sections = computeSectionProgress(wbs, planned, realized, today, 1);
+  const sCurve = buildSCurve(wbsItems, planned, realized, today);
+  const planP = planPct * 100;
+  const realP = realPct * 100;
+  const devP = realP - planP;
+
+  const elapsed = Math.max(0, daysBetween(project.startDate, today) + 1);
+  const remainingDays = Math.max(0, project.durationDays - elapsed);
+  const durationPct = project.durationDays > 0 ? Math.min(100, (elapsed / project.durationDays) * 100) : 0;
+
+  const lvl = spiLevel(spi);
+  const statusTone: RGB = lvl === "good" ? GOOD : lvl === "warn" ? WARN : lvl === "bad" ? BAD : MUTED;
+  const statusText =
+    lvl === "good" ? "PLANA UYGUN" : lvl === "warn" ? "YAKIN TAKİP" : lvl === "bad" ? "KRİTİK" : "VERİ YETERSİZ";
 
   // Personel
   const projectAttendance = personnelAttendance.filter((a) => a.projectId === project.id && a.present);
   const totalManhours = projectAttendance.reduce((s, a) => s + (a.hours || 0), 0);
   const uniquePersonnel = new Set(projectAttendance.map((a) => a.personnelMasterId)).size;
-  const todayPersonnel = projectAttendance.filter((a) => a.date === project.reportDate).length;
-  const todayManhours = projectAttendance
-    .filter((a) => a.date === project.reportDate)
-    .reduce((s, a) => s + (a.hours || 0), 0);
-
-  // Disiplin dağılımı (mevcut helper)
+  const todayAtt = projectAttendance.filter((a) => a.date === today);
+  const todayPersonnel = todayAtt.length;
+  const todayManhours = todayAtt.reduce((s, a) => s + (a.hours || 0), 0);
   const disciplineRows = manhourByDiscipline(personnelAttendance, personnel, project.id);
-
-  // Disiplin × Firma kırılımı
-  const discCompany: Record<string, Record<string, number>> = {};
   const personById = new Map(personnel.map((p) => [p.id, p]));
+
+  const discCompany: Record<string, Record<string, number>> = {};
   for (const a of projectAttendance) {
     const p = personById.get(a.personnelMasterId);
     const disc = (p?.discipline ?? "unknown") as string;
@@ -146,55 +225,43 @@ async function _renderManagementReportPDF(input: Input): Promise<void> {
     discCompany[disc][company] = (discCompany[disc][company] || 0) + (a.hours || 0);
   }
 
-  // Personel headcount BUGÜN — Firma × Pozisyon
-  const personnelPivot: Record<string, Record<string, number>> = {};
-  const personnelCols = new Set<string>();
-  const personnelRows = new Set<string>();
-  for (const a of projectAttendance) {
-    if (a.date !== project.reportDate) continue;
+  // Bugün firma × pozisyon
+  const todayByCompany = new Map<string, Map<string, number>>();
+  for (const a of todayAtt) {
     const p = personById.get(a.personnelMasterId);
     if (!p) continue;
+    const m = todayByCompany.get(p.company) ?? new Map<string, number>();
     const job = p.jobTitle ?? "—";
-    const company = p.company;
-    personnelCols.add(job);
-    personnelRows.add(company);
-    if (!personnelPivot[company]) personnelPivot[company] = {};
-    personnelPivot[company][job] = (personnelPivot[company][job] || 0) + 1;
+    m.set(job, (m.get(job) ?? 0) + 1);
+    todayByCompany.set(p.company, m);
   }
-  const personnelJobs = Array.from(personnelCols).sort((a, b) => a.localeCompare(b, "tr"));
-  const personnelCompanies = Array.from(personnelRows).sort((a, b) => a.localeCompare(b, "tr"));
 
-  // Personel son 7 gün
-  const days7: { d: string; count: number; hours: number }[] = [];
+  // Son 7 gün
+  const days7: { d: string; people: number; machines: number }[] = [];
+  const projMachine = machineAttendance.filter((a) => a.projectId === project.id && a.present);
   for (let i = 6; i >= 0; i--) {
-    const d = toISODate(new Date(new Date(project.reportDate).getTime() - i * 86400000));
-    const today = projectAttendance.filter((a) => a.date === d);
-    days7.push({ d, count: today.length, hours: today.reduce((s, a) => s + (a.hours || 0), 0) });
+    const d = toISODate(new Date(new Date(today).getTime() - i * 86400000));
+    days7.push({
+      d,
+      people: projectAttendance.filter((a) => a.date === d).length,
+      machines: projMachine.filter((a) => a.date === d).length,
+    });
   }
-  const max7 = Math.max(1, ...days7.map((x) => x.count));
 
   // Makine
-  const projMachine = machineAttendance.filter((a) => a.projectId === project.id && a.present);
   const totalMachineHours = projMachine.reduce((s, a) => s + (a.hours || 0), 0);
   const uniqueMachines = new Set(projMachine.map((a) => a.machineMasterId)).size;
-  const todayMachines = projMachine.filter((a) => a.date === project.reportDate).length;
-
-  // Makine pivot — Firma × Tip
+  const todayMachines = projMachine.filter((a) => a.date === today).length;
   const machineById = new Map(machines.map((m) => [m.id, m]));
-  const machinePivot: Record<string, Record<string, number>> = {};
-  const machineCols = new Set<string>();
-  const machineRowsSet = new Set<string>();
+  const todayMachineByCompany = new Map<string, Map<string, number>>();
   for (const a of projMachine) {
-    if (a.date !== project.reportDate) continue;
+    if (a.date !== today) continue;
     const m = machineById.get(a.machineMasterId);
     if (!m) continue;
-    machineCols.add(m.machineType);
-    machineRowsSet.add(m.company);
-    if (!machinePivot[m.company]) machinePivot[m.company] = {};
-    machinePivot[m.company][m.machineType] = (machinePivot[m.company][m.machineType] || 0) + 1;
+    const mm = todayMachineByCompany.get(m.company) ?? new Map<string, number>();
+    mm.set(m.machineType, (mm.get(m.machineType) ?? 0) + 1);
+    todayMachineByCompany.set(m.company, mm);
   }
-  const machineTypes = Array.from(machineCols).sort();
-  const machineCompanies = Array.from(machineRowsSet).sort((a, b) => a.localeCompare(b, "tr"));
 
   // Finansal
   const projBilling = billing.filter((b) => b.projectId === project.id && b.direction === "owner_incoming");
@@ -203,846 +270,1025 @@ async function _renderManagementReportPDF(input: Input): Promise<void> {
   const contractAmount = project.totalBudget ?? 0;
   const invoicedPct = contractAmount > 0 ? (ownerInvoiced / contractAmount) * 100 : 0;
   const paidPct = contractAmount > 0 ? (ownerPaid / contractAmount) * 100 : 0;
-  const openBalance = Math.max(0, contractAmount - ownerInvoiced);
 
-  // Procurement
+  // Satın alma
   const projProc = procurement.filter((p) => p.projectId === project.id);
-  const procPending = projProc.filter((p) => !p.actualDeliveredDate).length;
-  const procDone = projProc.filter((p) => p.actualDeliveredDate).length;
+  const procOpen = projProc.filter((p) => !p.actualDeliveredDate).length;
+  const procDone = projProc.length - procOpen;
   const procCritical = projProc.filter((p) => p.isCritical && !p.actualDeliveredDate).length;
-  const procFollow = procurementFollowup(projProc, project.reportDate).slice(0, 8);
+  const procFollow = procurementFollowup(projProc, today).slice(0, 14);
+  const procOverdue = procurementFollowup(projProc, today).filter((p) => p.hasOverdue).length;
 
-  // Lookahead — kritik_is ve diğerleri ayrı
+  // Lookahead
   const openLookahead = lookahead.filter((l) => l.projectId === project.id && !l.done);
   const critOpen = openLookahead.filter((l) => l.priority === "critical").length;
-  const today = project.reportDate;
+  const overdueLookahead = openLookahead.filter((l) => l.date < today).length;
   const fifteen = toISODate(new Date(new Date(today).getTime() + 15 * 86400000));
-  const next15Critical = openLookahead
+  const next15 = openLookahead
     .filter((l) => (l.kind ?? "kritik_is") === "kritik_is" && l.date <= fifteen)
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 10);
-  const claimTutanak = openLookahead
+    .slice(0, 15);
+  const claims = openLookahead
     .filter((l) => (l.kind ?? "kritik_is") !== "kritik_is")
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 10);
+    .slice(0, 12);
 
-  // Son 5 gün faaliyet
-  const fiveDaysAgo = toISODate(new Date(new Date(today).getTime() - 4 * 86400000));
-  const recentActivity: { date: string; code: string; name: string; qty: number; unit: string }[] = [];
-  for (const [code, byDate] of Object.entries(realized)) {
-    for (const [d, qty] of Object.entries(byDate)) {
-      if (d >= fiveDaysAgo && d <= today) {
-        const w = wbs.find((x) => x.code === code);
-        if (w) recentActivity.push({ date: d, code, name: w.name, qty, unit: w.unit });
-      }
-    }
-  }
-  recentActivity.sort((a, b) => b.date.localeCompare(a.date));
-  const top10Activity = recentActivity.slice(0, 12);
-
-  // Saha foto
-  const latestReport = [...dailyReports]
-    .filter((d) => d.projectId === project.id)
-    .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
-  const firstPhoto = latestReport?.photos?.[0];
-  const dronePhotoUrl = firstPhoto ? await resolvePhotoUrl(firstPhoto.url) : "";
-  const dronePhoto = firstPhoto && dronePhotoUrl ? { ...firstPhoto, url: dronePhotoUrl } : undefined;
-
-  // SPI rengi
-  const spiL = spiLevel(spi);
-  const spiColor = spiL === "good" ? "#10b981" : spiL === "warn" ? "#d97706" : spiL === "bad" ? "#dc2626" : "#94a3b8";
-
-  // Marka
-  const initials = project.name.split(" ").map((p) => p[0]).join("").toUpperCase().slice(0, 2);
-
-  // ════════════════════════════════════════════════════════════════════
-  // HIDDEN DOM
-  // ════════════════════════════════════════════════════════════════════
-  const W = 794;
-  const root = document.createElement("div");
-  root.style.cssText = `
-    position: fixed;
-    left: -10000px;
-    top: 0;
-    width: ${W}px;
-    background: #ffffff;
-    color: #0f172a;
-    font-family: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
-    font-size: 11px;
-    line-height: 1.45;
-  `;
-
-  // S-curve master
-  const sCurveSvg = renderSCurveSvg(sCurve, project.reportDate);
-
-  // Bölüm S-eğrileri (mini)
-  const sectionSCurvesHtml = sections.length > 0
-    ? `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">${sections.map((sec) => {
-        const sCurveSec = buildSectionSCurve(wbs, planned, realized, sec.code, project.reportDate, allDates);
-        const sLvl = spiLevel(sec.spi);
-        const sColor = sLvl === "good" ? "#10b981" : sLvl === "warn" ? "#d97706" : sLvl === "bad" ? "#dc2626" : "#94a3b8";
-        return `
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <div style="font-size:11px;font-weight:700;color:#0f172a;">
-                <span style="font-family:'JetBrains Mono',monospace;color:#64748b;font-size:10px;">${escapeHtml(sec.code)}</span>
-                &nbsp;${escapeHtml(sec.name)}
-              </div>
-              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10.5px;color:${sColor};">SPI ${sec.spi == null ? "—" : sec.spi.toFixed(2)}</span>
-            </div>
-            <div style="display:flex;gap:10px;font-size:10px;color:#475569;margin-bottom:6px;">
-              <span style="color:#2563eb;font-weight:700;">P ${(sec.planPct * 100).toFixed(0)}%</span>
-              <span style="color:#10b981;font-weight:700;">G ${(sec.realPct * 100).toFixed(0)}%</span>
-              <span style="margin-left:auto;color:#94a3b8;">${sec.leafCount} kalem</span>
-            </div>
-            ${renderMiniSCurveSvg(sCurveSec, project.reportDate)}
-          </div>
-        `;
-      }).join("")}</div>`
-    : "";
-
-  // Bölüm tablosu
-  const sectionsRows = sections.map((s) => {
-    const planP = s.planPct * 100;
-    const realP = s.realPct * 100;
-    const sLvl = spiLevel(s.spi);
-    const sColor = sLvl === "good" ? "#10b981" : sLvl === "warn" ? "#d97706" : sLvl === "bad" ? "#dc2626" : "#94a3b8";
-    return `
-      <tr>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#64748b;width:42px;">${escapeHtml(s.code)}</td>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;">${escapeHtml(s.name)}</td>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#2563eb;width:60px;">${planP.toFixed(0)}%</td>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#10b981;width:60px;">${realP.toFixed(0)}%</td>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:${sColor};width:60px;">${s.spi == null ? "—" : s.spi.toFixed(2)}</td>
-        <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;width:160px;">
-          <div style="position:relative;height:7px;border-radius:4px;background:#f1f5f9;overflow:hidden;">
-            <div style="position:absolute;inset:0;background:#93c5fd;width:${Math.min(100, planP)}%;"></div>
-            <div style="position:absolute;inset:0;background:#10b981;width:${Math.min(100, realP)}%;"></div>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join("");
-
-  // Disiplin tablosu
-  const disciplineRowsHtml = disciplineRows.length === 0
-    ? `<tr><td colspan="5" style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Puantaj kaydı bulunmuyor.</td></tr>`
-    : disciplineRows.map((d) => {
-        const breakdown = discCompany[d.discipline] ?? {};
-        const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
-        const discTotal = entries.reduce((s, [, h]) => s + h, 0);
-        const top3 = entries.slice(0, 3).map(([c, h]) => `<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:#f1f5f9;font-size:9px;font-weight:600;color:#475569;margin-right:3px;">${escapeHtml(c)} <strong style="color:#10b981;">%${discTotal > 0 ? Math.round((h / discTotal) * 100) : 0}</strong></span>`).join("");
-        const rest = Math.max(0, entries.length - 3);
-        const sharePct = totalManhours > 0 ? (d.hours / totalManhours) * 100 : 0;
-        return `
-          <tr>
-            <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;width:90px;">${escapeHtml(getDisciplineLabel(d.discipline))}</td>
-            <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#0f172a;width:70px;">${formatNumber(d.hours, 0)}</td>
-            <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#10b981;width:60px;">${formatNumber(d.manDays, 0)}</td>
-            <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;color:#475569;width:50px;">${d.uniquePeople}</td>
-            <td style="padding:7px 9px;border-bottom:1px solid #e5e7eb;">${top3}${rest > 0 ? `<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:#f8fafc;font-size:9px;color:#94a3b8;font-weight:600;">+${rest}</span>` : ""}<div style="margin-top:3px;height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden;"><div style="height:100%;background:#10b981;width:${sharePct}%;"></div></div></td>
-          </tr>
-        `;
-      }).join("");
-
-  // Headcount 7 gün
-  const headcount7Bars = days7.map((d) => {
-    const h = max7 > 0 ? (d.count / max7) * 60 : 0;
-    const isToday = d.d === today;
-    const label = d.d.slice(8, 10) + "." + d.d.slice(5, 7);
-    return `
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-        <div style="font-size:9.5px;font-weight:700;color:#0f172a;font-family:'JetBrains Mono',ui-monospace,monospace;">${d.count}</div>
-        <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:62px;">
-          <div style="height:${Math.max(2, h)}px;background:${isToday ? "#10b981" : "#86efac"};border-radius:3px 3px 0 0;"></div>
-        </div>
-        <div style="font-size:8.5px;color:${isToday ? "#10b981" : "#94a3b8"};font-weight:${isToday ? 700 : 500};font-family:'JetBrains Mono',ui-monospace,monospace;">${label}</div>
-      </div>
-    `;
-  }).join("");
-
-  // Personel pivot
-  const personnelPivotHtml = personnelCompanies.length === 0
-    ? `<div style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Bugün sahada personel kaydı yok.</div>`
-    : `
-      <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
-        <thead>
-          <tr style="background:#f1f5f9;">
-            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Firma</th>
-            ${personnelJobs.map((j) => `<th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:700;letter-spacing:1.1px;color:#64748b;text-transform:uppercase;">${escapeHtml(j)}</th>`).join("")}
-            <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Top.</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${personnelCompanies.map((c) => {
-            const row = personnelPivot[c];
-            const total = personnelJobs.reduce((s, j) => s + (row?.[j] ?? 0), 0);
-            return `
-              <tr>
-                <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;">${escapeHtml(c)}</td>
-                ${personnelJobs.map((j) => {
-                  const v = row?.[j] ?? 0;
-                  return `<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:${v > 0 ? 700 : 400};color:${v > 0 ? "#0f172a" : "#cbd5e1"};">${v > 0 ? v : "—"}</td>`;
-                }).join("")}
-                <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#10b981;">${total}</td>
-              </tr>
-            `;
-          }).join("")}
-          <tr style="background:#fef3c7;">
-            <td style="padding:6px 8px;font-weight:700;color:#92400e;text-transform:uppercase;font-size:9px;letter-spacing:1px;">Toplam</td>
-            ${personnelJobs.map((j) => {
-              const total = personnelCompanies.reduce((s, c) => s + (personnelPivot[c]?.[j] ?? 0), 0);
-              return `<td style="padding:6px 8px;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#92400e;">${total}</td>`;
-            }).join("")}
-            <td style="padding:6px 8px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:800;color:#92400e;">${todayPersonnel}</td>
-          </tr>
-        </tbody>
-      </table>
-    `;
-
-  // Makine pivot
-  const machinePivotHtml = machineCompanies.length === 0
-    ? `<div style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Bugün sahada makine kaydı yok.</div>`
-    : `
-      <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
-        <thead>
-          <tr style="background:#f1f5f9;">
-            <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Firma</th>
-            ${machineTypes.map((t) => `<th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:700;letter-spacing:1.1px;color:#64748b;text-transform:uppercase;text-transform:capitalize;">${escapeHtml(t)}</th>`).join("")}
-            <th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Top.</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${machineCompanies.map((c) => {
-            const row = machinePivot[c];
-            const total = machineTypes.reduce((s, t) => s + (row?.[t] ?? 0), 0);
-            return `
-              <tr>
-                <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;">${escapeHtml(c)}</td>
-                ${machineTypes.map((t) => {
-                  const v = row?.[t] ?? 0;
-                  return `<td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:${v > 0 ? 700 : 400};color:${v > 0 ? "#0f172a" : "#cbd5e1"};">${v > 0 ? v : "—"}</td>`;
-                }).join("")}
-                <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#10b981;">${total}</td>
-              </tr>
-            `;
-          }).join("")}
-          <tr style="background:#fef3c7;">
-            <td style="padding:6px 8px;font-weight:700;color:#92400e;text-transform:uppercase;font-size:9px;letter-spacing:1px;">Toplam</td>
-            ${machineTypes.map((t) => {
-              const total = machineCompanies.reduce((s, c) => s + (machinePivot[c]?.[t] ?? 0), 0);
-              return `<td style="padding:6px 8px;text-align:center;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#92400e;">${total}</td>`;
-            }).join("")}
-            <td style="padding:6px 8px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:800;color:#92400e;">${todayMachines}</td>
-          </tr>
-        </tbody>
-      </table>
-    `;
-
-  // Procurement
-  const procRowsHtml = procFollow.length === 0
-    ? `<tr><td colspan="4" style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Yaklaşan kritik teslim yok.</td></tr>`
-    : procFollow.map((p) => {
-      const m = p.milestones[p.milestones.length - 1];
-      const display = m.isCompleted && m.actualDate ? `✓ ${formatDate(m.actualDate)}` : m.plannedDate ? formatDate(m.plannedDate) : "—";
-      const tone = m.isCompleted ? "#10b981" : m.isOverdue ? "#dc2626" : m.isUpcoming ? "#d97706" : "#64748b";
-      const sub = !m.isCompleted && m.daysFromToday != null ? (m.daysFromToday < 0 ? `${-m.daysFromToday}g gecikme` : `${m.daysFromToday}g kaldı`) : "";
-      return `
-        <tr>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;width:14px;">${p.isCritical ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fbbf24;"></span>` : ""}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;">${escapeHtml(p.item.material)}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:10.5px;">${escapeHtml(p.item.supplier ?? "—")}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:${tone};white-space:nowrap;">${display}${sub ? `<div style="font-size:9px;font-weight:500;opacity:0.85;">${sub}</div>` : ""}</td>
-        </tr>
-      `;
-    }).join("");
-
-  // Kritik işler (kritik_is)
-  const next15Html = next15Critical.length === 0
-    ? `<tr><td colspan="4" style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Açık kritik iş yok.</td></tr>`
-    : next15Critical.map((l) => lookaheadRow(l, today)).join("");
-
-  // Claim & Tutanak
-  const claimHtml = claimTutanak.length === 0
-    ? `<tr><td colspan="4" style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Aktif claim/tutanak yok.</td></tr>`
-    : claimTutanak.map((l) => lookaheadRow(l, today)).join("");
-
-  // Son 5 gün faaliyet
-  const recentHtml = top10Activity.length === 0
-    ? `<tr><td colspan="4" style="padding:14px;text-align:center;color:#94a3b8;font-size:11px;">Son 5 günde gerçekleşme yok.</td></tr>`
-    : top10Activity.map((r) => `
-        <tr>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#64748b;width:58px;white-space:nowrap;">${formatDate(r.date)}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#64748b;width:54px;">${escapeHtml(r.code)}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-weight:500;color:#0f172a;">${escapeHtml(r.name)}</td>
-          <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#10b981;white-space:nowrap;">+${formatNumber(r.qty, 1)} ${escapeHtml(r.unit)}</td>
-        </tr>
-      `).join("");
-
-  // ════════════════════════════════════════════════════════════════════
-  // DOM HTML
-  // ════════════════════════════════════════════════════════════════════
-  root.innerHTML = `
-    <div style="padding:22px 22px 30px 22px;">
-
-      <!-- KAPAK / ANTET -->
-      <div data-pdf-section data-page-start>
-        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#334155 100%);color:white;padding:16px 22px;border-radius:12px 12px 0 0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;opacity:0.85;">
-              ${escapeHtml(panelName ?? "Proje Yönetim Platformu")}
-            </div>
-            <div style="font-size:10px;font-weight:600;opacity:0.85;font-family:'JetBrains Mono',ui-monospace,monospace;">
-              YÖNETİM ÖZETİ · ${formatDate(project.reportDate)}
-            </div>
-          </div>
-        </div>
-        <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:22px;background:linear-gradient(180deg,#fafafa 0%,#ffffff 100%);">
-          <div style="display:flex;align-items:flex-start;gap:18px;">
-            <div style="width:68px;height:68px;border-radius:14px;background:linear-gradient(135deg,#10b981,#047857);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:24px;letter-spacing:0.5px;flex-shrink:0;box-shadow:0 4px 12px rgba(16,185,129,0.25);">
-              ${escapeHtml(initials)}
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(16,185,129,0.14);color:#047857;font-size:9.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;">
-                ${STATUS_LABEL[project.status] ?? project.status}
-              </div>
-              <div style="font-size:24px;font-weight:800;letter-spacing:-0.4px;margin-top:6px;line-height:1.1;color:#0f172a;">
-                ${escapeHtml(project.name)}
-              </div>
-              <div style="margin-top:5px;font-size:12.5px;color:#475569;">
-                ${escapeHtml(project.location)}${project.installedCapacityMw != null ? ` &nbsp;·&nbsp; <strong style=\"color:#0f172a;\">${project.installedCapacityMw} MW</strong>` : ""}${contractAmount ? ` &nbsp;·&nbsp; <strong style=\"color:#0f172a;\">${formatMoney(contractAmount, project.budgetCurrency, 0)}</strong>` : ""}
-              </div>
-            </div>
-          </div>
-          <div style="margin-top:16px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px;border-top:1px dashed #e5e7eb;padding-top:14px;">
-            ${metaCell("Başlangıç", formatDate(project.startDate))}
-            ${metaCell("Plan Bitiş", formatDate(project.plannedEnd))}
-            ${metaCell("Sözleşme", formatDate(project.contractEnd))}
-            ${metaCell("Rapor", formatDate(project.reportDate))}
-            ${metaCell("Süre", `${elapsed} / ${project.durationDays}g`)}
-          </div>
-        </div>
-      </div>
-
-      <!-- YÖNETİM DEĞERLENDİRMESİ -->
-      ${section("Yönetim Değerlendirmesi", `
-        <div style="font-size:12.5px;line-height:1.7;color:#1e293b;">
-          ${escapeHtml(project.name)} projesi <strong>${formatDate(project.reportDate)}</strong> itibarıyla
-          <strong style="color:${realPct >= planPct ? "#10b981" : "#dc2626"}">${realPct >= planPct ? "plan üzerinde" : "plan altında"}</strong>
-          ilerlemekte. Planlanan ilerleme <strong style="color:#2563eb">%${(planPct * 100).toFixed(1)}</strong>,
-          gerçekleşen ilerleme <strong style="color:#10b981">%${(realPct * 100).toFixed(1)}</strong>.
-          Performans Endeksi (SPI) <strong style="color:${spiColor}">${spi == null ? "—" : spi.toFixed(3)}</strong>${spi != null ? (spi >= 0.95 ? " — sağlıklı seyrediyor" : spi >= 0.85 ? " — yakın takip gerekiyor" : " — acil aksiyon gerekli") : ""}.
-          Süre kullanımı <strong>%${durationPct.toFixed(0)}</strong> (${elapsed}/${project.durationDays} gün; ${remaining} gün kaldı).
-        </div>
-        <div style="margin-top:8px;font-size:12.5px;line-height:1.7;color:#1e293b;">
-          ${critOpen > 0 ? `<strong style="color:#dc2626">${critOpen} açık kritik iş</strong> bulunuyor; ilerideki 15 gün içinde <strong>${next15Critical.length}</strong> kalem yönetim takibi gerektiriyor.` : `Önümüzdeki 15 günde <strong>${next15Critical.length}</strong> aksiyon kalemi takipte; açık kritik iş yok.`}
-          Finansal: sözleşmenin <strong>%${invoicedPct.toFixed(1)}</strong>'i faturalandı, <strong>%${paidPct.toFixed(1)}</strong>'i tahsil edildi.
-          Operasyon: bugün <strong>${todayPersonnel}</strong> personel ve <strong>${todayMachines}</strong> makine sahada; toplam <strong>${formatNumber(totalManhours, 0)}</strong> adam-saat harcandı.
-        </div>
-      `)}
-
-      <!-- KPI GRID -->
-      ${section("Kritik Göstergeler", `
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-          ${bigKpi("Planlanan İlerleme", `${(planPct * 100).toFixed(1)}%`, "#2563eb", "Baseline'a göre öngörülen")}
-          ${bigKpi("Gerçekleşen İlerleme", `${(realPct * 100).toFixed(1)}%`, "#10b981", "Sahada yapılan")}
-          ${bigKpi("SPI", spi == null ? "—" : spi.toFixed(3), spiColor, "Plan vs Gerçek oranı")}
-          ${bigKpi("Adam-Saat", formatNumber(totalManhours, 0), "#7c3aed", `${uniquePersonnel} tekil personel`)}
-          ${bigKpi("Makine-Saat", formatNumber(totalMachineHours, 0), "#0891b2", `${uniqueMachines} tekil makine`)}
-          ${bigKpi("Süre Kullanımı", `${durationPct.toFixed(0)}%`, "#dc2626", `${remaining} gün kaldı`)}
-        </div>
-      `)}
-
-      <!-- S-CURVE -->
-      ${section("Plan vs Gerçekleşme · S-Eğrisi", `
-        <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
-          ${sCurveSvg}
-          <div style="display:flex;gap:18px;margin-top:10px;font-size:11px;justify-content:center;">
-            <span style="display:flex;align-items:center;gap:6px;color:#475569;">
-              <span style="display:inline-block;width:18px;height:3px;background:#2563eb;border-radius:2px;"></span>
-              <strong>Planlanan</strong>
-            </span>
-            <span style="display:flex;align-items:center;gap:6px;color:#475569;">
-              <span style="display:inline-block;width:18px;height:3px;background:#10b981;border-radius:2px;"></span>
-              <strong>Gerçekleşen</strong>
-            </span>
-            <span style="display:flex;align-items:center;gap:6px;color:#475569;">
-              <span style="display:inline-block;width:2px;height:14px;background:#dc2626;"></span>
-              <strong>Bugün</strong>
-            </span>
-          </div>
-        </div>
-      `)}
-
-      ${sections.length > 0 ? section("Bölüm İlerlemesi · L1 Tablosu", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Kod</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Bölüm</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Plan</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Gerç.</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">SPI</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">İlerleme</th>
-              </tr>
-            </thead>
-            <tbody>${sectionsRows}</tbody>
-          </table>
-        </div>
-      `) : ""}
-
-      ${sections.length > 0 ? section("Bölüm Bazlı S-Eğrileri", sectionSCurvesHtml) : ""}
-
-      ${section("Finansal Durum · İşveren Tarafı", `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
-            <table style="width:100%;font-size:11.5px;">
-              <tr><td style="padding:5px 0;color:#64748b;">Sözleşme Bedeli</td><td style="padding:5px 0;text-align:right;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;color:#0f172a;">${formatMoney(contractAmount, project.budgetCurrency, 0)}</td></tr>
-              <tr><td style="padding:5px 0;color:#64748b;">Faturalanan</td><td style="padding:5px 0;text-align:right;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;color:#2563eb;">${formatMoney(ownerInvoiced, project.budgetCurrency, 0)} <span style="color:#94a3b8;font-weight:400;">(%${invoicedPct.toFixed(1)})</span></td></tr>
-              <tr><td style="padding:5px 0;color:#64748b;">Tahsil Edilen</td><td style="padding:5px 0;text-align:right;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;color:#10b981;">${formatMoney(ownerPaid, project.budgetCurrency, 0)} <span style="color:#94a3b8;font-weight:400;">(%${paidPct.toFixed(1)})</span></td></tr>
-              <tr><td style="padding:5px 0;color:#64748b;border-top:1px dashed #e5e7eb;padding-top:8px;">Açık Bakiye</td><td style="padding:5px 0;text-align:right;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;color:#dc2626;border-top:1px dashed #e5e7eb;padding-top:8px;">${formatMoney(openBalance, project.budgetCurrency, 0)}</td></tr>
-            </table>
-          </div>
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Görsel</div>
-            ${progressBar("Faturalanan", invoicedPct, "#2563eb")}
-            ${progressBar("Tahsil Edilen", paidPct, "#10b981")}
-            ${progressBar("Açık Bakiye", 100 - invoicedPct, "#dc2626")}
-          </div>
-        </div>
-      `)}
-
-      ${section("Adam-Saat · Disipline Göre Dağılım", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Disiplin</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Adam-Saat</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Adam-Gün</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Kişi</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Firma %</th>
-              </tr>
-            </thead>
-            <tbody>${disciplineRowsHtml}</tbody>
-          </table>
-        </div>
-      `)}
-
-      ${section("Personel Headcount · Bugün × Son 7 Gün", `
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;">
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#fafafa;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Bugün · Firma × Pozisyon</div>
-            ${personnelPivotHtml}
-          </div>
-          <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#fafafa;">
-            <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;margin-bottom:8px;">Son 7 Gün</div>
-            <div style="display:flex;gap:6px;align-items:flex-end;">${headcount7Bars}</div>
-            <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#475569;">
-              <span>Bugün: <strong style="color:#10b981;">${todayPersonnel}</strong></span>
-              <span>Adam-saat: <strong style="color:#0f172a;">${formatNumber(todayManhours, 0)}</strong></span>
-            </div>
-          </div>
-        </div>
-      `)}
-
-      ${machineCompanies.length > 0 ? section("Makine Headcount · Bugün · Firma × Tip", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#fafafa;">
-          ${machinePivotHtml}
-        </div>
-      `) : ""}
-
-      ${section("Satın Alma · Yaklaşan Teslimler", `
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">
-          ${miniStat("Toplam Kalem", String(projProc.length), "#0f172a")}
-          ${miniStat("Açık", String(procPending), "#2563eb")}
-          ${miniStat("Teslim Alındı", String(procDone), "#10b981")}
-        </div>
-        ${procCritical > 0 ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:10px;"><strong>${procCritical} kritik açık kalem</strong> yönetim dikkati gerektirmekte.</div>` : ""}
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;width:18px;"></th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Malzeme</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Tedarikçi</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Teslim</th>
-              </tr>
-            </thead>
-            <tbody>${procRowsHtml}</tbody>
-          </table>
-        </div>
-      `)}
-
-      ${section("15-Gün Kritik İşler · Aksiyon Listesi", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Tarih</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Görev</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Sorumlu</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Öncelik</th>
-              </tr>
-            </thead>
-            <tbody>${next15Html}</tbody>
-          </table>
-        </div>
-      `)}
-
-      ${claimTutanak.length > 0 ? section("Claim & Tutanak Konuları", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Tarih</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Konu</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Sorumlu</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Tür</th>
-              </tr>
-            </thead>
-            <tbody>${claimHtml}</tbody>
-          </table>
-        </div>
-      `) : ""}
-
-      ${section("Son 5 Günün Faaliyet Özeti", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-              <tr style="background:#f1f5f9;">
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Tarih</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">WBS</th>
-                <th style="padding:8px 9px;text-align:left;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">İş Kalemi</th>
-                <th style="padding:8px 9px;text-align:right;font-size:9px;font-weight:700;letter-spacing:1.2px;color:#64748b;text-transform:uppercase;">Miktar</th>
-            </tr>
-            </thead>
-            <tbody>${recentHtml}</tbody>
-          </table>
-        </div>
-      `)}
-
-      ${dronePhoto ? section("Saha Fotoğrafı", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#0f172a;">
-          <div style="position:relative;width:100%;aspect-ratio:16/9;background:#1e293b;">
-            <img src="${escapeHtml(dronePhoto.url)}" alt="Saha" crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;" />
-          </div>
-          ${latestReport?.summary ? `<div style="padding:14px 16px;background:#0f172a;color:#e2e8f0;font-size:11.5px;line-height:1.5;">${escapeHtml(latestReport.summary)}</div>` : ""}
-          <div style="padding:8px 16px;font-size:9.5px;color:#94a3b8;font-family:'JetBrains Mono',ui-monospace,monospace;background:#0f172a;border-top:1px solid #1e293b;">
-            ${latestReport ? formatDate(latestReport.reportDate) : ""}${dronePhoto.caption ? ` · ${escapeHtml(dronePhoto.caption)}` : ""}
-          </div>
-        </div>
-      `) : ""}
-
-      ${section("Proje Künyesi", `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;font-size:11.5px;">
-          ${kvp("Proje Adı", project.name)}
-          ${kvp("Durum", STATUS_LABEL[project.status] ?? project.status)}
-          ${kvp("Lokasyon", project.location)}
-          ${kvp("Kurulu Güç", project.installedCapacityMw != null ? `${project.installedCapacityMw} MW` : "—")}
-          ${kvp("Başlangıç", formatDate(project.startDate))}
-          ${kvp("Plan Bitiş", formatDate(project.plannedEnd))}
-          ${kvp("Sözleşme Bitiş", formatDate(project.contractEnd))}
-          ${kvp("Süre", `${project.durationDays} gün`)}
-          ${kvp("Bütçe", contractAmount ? formatMoney(contractAmount, project.budgetCurrency, 0) : "—")}
-          ${kvp("Rapor Tarihi", formatDate(project.reportDate))}
-        </div>
-      `)}
-
-      <!-- İMZA -->
-      <div data-pdf-section style="margin-top:32px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:30px;">
-          <div>
-            <div style="border-bottom:1.5px solid #0f172a;height:34px;"></div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#64748b;margin-top:5px;text-align:center;">Saha Mühendisi</div>
-          </div>
-          <div>
-            <div style="border-bottom:1.5px solid #0f172a;height:34px;"></div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#64748b;margin-top:5px;text-align:center;">Proje Yöneticisi</div>
-          </div>
-          <div>
-            <div style="border-bottom:1.5px solid #0f172a;height:34px;"></div>
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#64748b;margin-top:5px;text-align:center;">Direktör</div>
-          </div>
-        </div>
-        <div style="margin-top:18px;padding-top:10px;border-top:1px dashed #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;font-family:'JetBrains Mono',ui-monospace,monospace;">
-          <span>${escapeHtml(panelName ?? "Proje Yönetim Platformu")}${preparedBy ? ` · Hazırlayan: ${escapeHtml(preparedBy)}` : ""}</span>
-          <span>${formatDate(project.reportDate)} · proje-yonetim-platformu</span>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(root);
-
-  // Resimlerin yüklenmesini bekle
-  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
-  await Promise.all(
-    imgs.map(
-      (img) =>
-        new Promise<void>((res) => {
-          if (img.complete && img.naturalWidth > 0) return res();
-          const done = () => res();
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-          setTimeout(done, 5000);
-        })
-    )
-  );
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  try {
-    const canvas = await html2canvas(root, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      logging: false,
-      windowWidth: W,
+  // Son 7 gün faaliyetleri — kalem bazında topla
+  const weekStart = days7[0].d;
+  const activity: { code: string; name: string; unit: string; week: number; cum: number; total: number; planCum: number }[] = [];
+  for (const w of wbs) {
+    if (!w.isLeaf || w.deletedAt) continue;
+    const m = realized[w.code];
+    if (!m) continue;
+    let week = 0;
+    for (const [d, q] of Object.entries(m)) if (d >= weekStart && d <= today) week += Number(q) || 0;
+    if (week <= 0) continue;
+    activity.push({
+      code: w.code,
+      name: w.name,
+      unit: w.unit || "",
+      week,
+      cum: sumByDateMap(realized, w.code, today),
+      total: w.quantity || 0,
+      planCum: sumByDateMap(planned, w.code, today),
     });
+  }
+  activity.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
 
-    // Bölüm sınırlarını topla — html scale ile çarp
-    const scale = 2;
-    const rootRect = root.getBoundingClientRect();
-    const sectionEls = Array.from(root.querySelectorAll<HTMLElement>("[data-pdf-section]"));
-    const sectionTops = sectionEls.map((el) => (el.getBoundingClientRect().top - rootRect.top) * scale);
-
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    // Geist fontu yükle ve aktive et — footer'da Türkçe karakter desteği için
-    pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-    pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-    pdf.setFont("Geist", "normal");
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const pxPerMm = canvas.width / pageW;
-    const pageHpx = pageH * pxPerMm;
-
-    let pageStart = 0;
-    let pageNo = 0;
-    const totalH = canvas.height;
-
-    while (pageStart < totalH) {
-      let pageEnd = Math.min(pageStart + pageHpx, totalH);
-
-      // En son sayfa değilse — sayfa içinde başlayan bir section sınırı varsa orada kes
-      if (pageEnd < totalH) {
-        const cuts = sectionTops.filter((t) => t > pageStart + 60 && t <= pageEnd);
-        if (cuts.length > 0) {
-          // Son cut'tan önce kes — böylece o section yeni sayfaya geçer
-          pageEnd = cuts[cuts.length - 1];
-        }
-      }
-
-      const sliceH = pageEnd - pageStart;
-      const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = sliceH;
-      const ctx = slice.getContext("2d");
-      if (!ctx) break;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, slice.width, slice.height);
-      ctx.drawImage(canvas, 0, -pageStart);
-      const imgData = slice.toDataURL("image/png");
-      if (pageNo > 0) pdf.addPage();
-      const imgMmH = sliceH / pxPerMm;
-      pdf.addImage(imgData, "PNG", 0, 0, pageW, imgMmH);
-
-      // Footer
-      pdf.setFontSize(7);
-      pdf.setTextColor(160, 160, 160);
-      pdf.text(
-        `${panelName ?? "Proje Yönetim Platformu"} · ${project.name} · ${formatDate(project.reportDate)}${preparedBy ? ` · ${preparedBy}` : ""}`,
-        pageW / 2,
-        pageH - 4,
-        { align: "center" }
-      );
-      pdf.text(`Sayfa ${pageNo + 1}`, pageW - 8, pageH - 4, { align: "right" });
-
-      // Slice canvas'ı bellekten serbest bırak
-      ctx.clearRect(0, 0, slice.width, slice.height);
-      slice.width = 0;
-      slice.height = 0;
-
-      pageStart = pageEnd;
-      pageNo++;
+  // Son günlük rapor
+  const latestReport = [...dailyReports]
+    .filter((d) => d.projectId === project.id && d.reportDate <= today)
+    .sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
+  const photoSlots: { data: string; caption?: string }[] = [];
+  if (latestReport?.photos?.length) {
+    for (const p of latestReport.photos.slice(0, 4)) {
+      const url = await resolvePhotoUrl(p.url);
+      const data = await coverImage(url, 85, 57);
+      if (data) photoSlots.push({ data, caption: p.caption });
     }
-
-    pdf.save(`${project.name.replace(/\s+/g, "-")}-yonetim-ozeti-${project.reportDate}.pdf`);
-  } finally {
-    document.body.removeChild(root);
   }
-}
 
-// ═════════════════════════════════════════════════════════════════════════
-// YARDIMCILAR
-// ═════════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════════
+  // PDF
+  // ════════════════════════════════════════════════════════════════════
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  doc.addFileToVFS("Geist-Regular.ttf", fReg);
+  doc.addFont("Geist-Regular.ttf", "Geist", "normal");
+  doc.addFileToVFS("Geist-Bold.ttf", fBold);
+  doc.addFont("Geist-Bold.ttf", "Geist", "bold");
+  doc.setProperties({
+    title: `${project.name} — Yönetim Özeti — ${formatDate(today)}`,
+    subject: "Proje Yönetim Özeti",
+    author: preparedBy ?? brand,
+    creator: brand,
+  });
 
-function section(title: string, body: string): string {
-  return `
-    <div data-pdf-section style="margin-top:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <span style="display:inline-block;width:3px;height:18px;background:linear-gradient(180deg,#10b981,#047857);border-radius:2px;"></span>
-        <span style="font-size:10.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#475569;">${escapeHtml(title)}</span>
-        <span style="flex:1;height:1px;background:linear-gradient(90deg,#e5e7eb,transparent);"></span>
-      </div>
-      ${body}
-    </div>
-  `;
-}
+  const font = (style: "normal" | "bold", size: number, color: RGB = INK) => {
+    doc.setFont("Geist", style);
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
+  };
+  const fill = (c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
+  const stroke = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
 
-function metaCell(label: string, value: string): string {
-  return `
-    <div style="text-align:center;">
-      <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">${escapeHtml(label)}</div>
-      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:3px;font-family:'JetBrains Mono',ui-monospace,monospace;">${escapeHtml(value)}</div>
-    </div>
-  `;
-}
+  let y = TOP;
+  const toc: { num: string; title: string; page: number }[] = [];
+  let secNo = 0;
 
-function bigKpi(label: string, value: string, color: string, sub: string): string {
-  return `
-    <div style="background:linear-gradient(180deg,#ffffff,#fafafa);border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-      <div style="font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#64748b;">${escapeHtml(label)}</div>
-      <div style="font-size:28px;font-weight:800;color:${color};margin-top:4px;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:-0.6px;line-height:1;">${escapeHtml(value)}</div>
-      <div style="font-size:10px;color:#94a3b8;margin-top:5px;">${escapeHtml(sub)}</div>
-    </div>
-  `;
-}
+  const newPage = () => {
+    doc.addPage();
+    y = TOP;
+  };
+  const ensure = (h: number) => {
+    if (y + h > BOTTOM) newPage();
+  };
+  const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
-function miniStat(label: string, value: string, color: string): string {
-  return `
-    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:white;">
-      <div style="font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#94a3b8;">${escapeHtml(label)}</div>
-      <div style="font-size:20px;font-weight:800;color:${color};margin-top:3px;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:-0.3px;line-height:1;">${escapeHtml(value)}</div>
-    </div>
-  `;
-}
-
-function progressBar(label: string, pct: number, color: string): string {
-  const v = Math.max(0, Math.min(100, pct));
-  return `
-    <div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:4px;"><span>${escapeHtml(label)}</span><span style="font-weight:700;color:${color};">${pct.toFixed(1)}%</span></div>
-      <div style="height:10px;background:#f1f5f9;border-radius:5px;overflow:hidden;"><div style="height:100%;background:${color};width:${v}%;"></div></div>
-    </div>
-  `;
-}
-
-function kvp(label: string, value: string): string {
-  return `
-    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #e5e7eb;">
-      <span style="color:#64748b;">${escapeHtml(label)}</span>
-      <strong style="color:#0f172a;text-align:right;">${escapeHtml(value)}</strong>
-    </div>
-  `;
-}
-
-function lookaheadRow(l: LookaheadItem, today: string): string {
-  const d = daysBetween(today, l.date);
-  const tone = d < 0 ? "#dc2626" : d <= 3 ? "#d97706" : "#64748b";
-  const pTone = l.priority === "critical" ? "#dc2626" : l.priority === "high" ? "#d97706" : l.priority === "medium" ? "#2563eb" : "#94a3b8";
-  const pLabel = ({ critical: "KRİTİK", high: "YÜKSEK", medium: "ORTA", low: "DÜŞÜK" } as Record<string, string>)[l.priority] ?? "—";
-  return `
-    <tr>
-      <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:${tone};font-weight:700;width:64px;white-space:nowrap;">${formatDate(l.date)}</td>
-      <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;font-weight:600;color:#0f172a;">${escapeHtml(l.task)}</td>
-      <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:10.5px;">${escapeHtml(l.owner ?? "—")}</td>
-      <td style="padding:6px 9px;border-bottom:1px solid #e5e7eb;text-align:right;width:64px;"><span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:8.5px;font-weight:700;letter-spacing:0.8px;background:${pTone}1a;color:${pTone};">${pLabel}</span></td>
-    </tr>
-  `;
-}
-
-/** S-curve master (büyük). points: planPct/realPct = 0–100 aralığı, NaN = veri yok */
-function renderSCurveSvg(points: SCurvePoint[], reportDate: string): string {
-  return renderSCurveSvgGeneric(points, reportDate, 720, 200, { l: 38, r: 14, t: 14, b: 28 }, true);
-}
-
-/** Mini S-curve (bölüm bazlı, küçük) */
-function renderMiniSCurveSvg(points: SCurvePoint[], reportDate: string): string {
-  return renderSCurveSvgGeneric(points, reportDate, 320, 100, { l: 26, r: 10, t: 8, b: 18 }, false);
-}
-
-function renderSCurveSvgGeneric(
-  points: SCurvePoint[],
-  reportDate: string,
-  W: number,
-  H: number,
-  pad: { l: number; r: number; t: number; b: number },
-  labels: boolean
-): string {
-  if (points.length < 2) {
-    return `<div style="height:${H}px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">Yeterli veri yok.</div>`;
-  }
-  const innerW = W - pad.l - pad.r;
-  const innerH = H - pad.t - pad.b;
-  const n = points.length;
-  const toX = (i: number) => pad.l + (i / (n - 1)) * innerW;
-  // points.planPct ve realPct: 0–100 aralığı (buildSCurve *100)
-  const toY = (pct: number) => {
-    const v = Math.min(100, Math.max(0, pct));
-    return pad.t + (1 - v / 100) * innerH;
+  /** Numaralı bölüm başlığı. minBody: başlığın altında aynı sayfada kalması gereken alan. */
+  const h2 = (title: string, minBody = 40) => {
+    secNo++;
+    const num = String(secNo).padStart(2, "0");
+    if (y > TOP) y += 4;
+    ensure(14 + minBody);
+    toc.push({ num, title, page: doc.getCurrentPageInfo().pageNumber });
+    font("bold", 10, PLAN);
+    doc.text(num, ML, y + 5);
+    font("bold", 13.5, NAVY_DEEP);
+    doc.text(title, ML + 9, y + 5);
+    stroke(NAVY_DEEP);
+    doc.setLineWidth(0.5);
+    doc.line(ML, y + 8, ML + CW, y + 8);
+    y += 13;
   };
 
-  const planPath = points
-    .map((p, i) => (i === 0 ? "M" : "L") + toX(i).toFixed(1) + "," + toY(p.planPct).toFixed(1))
-    .join("");
+  const h3 = (title: string, minBody = 25) => {
+    ensure(9 + minBody);
+    font("bold", 9.5, NAVY);
+    doc.text(title.toLocaleUpperCase("tr-TR"), ML, y + 3.5, { charSpace: 0.3 });
+    y += 7;
+  };
 
-  // Real path NaN'a kadar
-  let realPath = "";
-  let firstReal = true;
-  let lastRealIdx = -1;
-  for (let i = 0; i < n; i++) {
-    const v = points[i].realPct;
-    if (Number.isFinite(v)) {
-      realPath += (firstReal ? "M" : "L") + toX(i).toFixed(1) + "," + toY(v).toFixed(1);
-      firstReal = false;
-      lastRealIdx = i;
-    } else {
-      break;
+  const paragraph = (text: string, size = 9.5, color: RGB = INK, indent = 0, lh = 4.6) => {
+    font("normal", size, color);
+    const lines = doc.splitTextToSize(text, CW - indent) as string[];
+    for (const ln of lines) {
+      ensure(lh);
+      doc.text(ln, ML + indent, y + 3.5);
+      y += lh;
+    }
+  };
+
+  const bullet = (text: string, tone: RGB = NAVY) => {
+    font("normal", 9.5, INK);
+    const lines = doc.splitTextToSize(text, CW - 6) as string[];
+    ensure(lines.length * 4.6 + 1);
+    fill(tone);
+    doc.circle(ML + 1.4, y + 2.3, 0.9, "F");
+    for (const ln of lines) {
+      doc.text(ln, ML + 5, y + 3.5);
+      y += 4.6;
+    }
+    y += 1.2;
+  };
+
+  /** Sol çizgili vurgu kutusu */
+  const callout = (title: string, text: string, tone: RGB) => {
+    font("normal", 9.5, INK);
+    const lines = doc.splitTextToSize(text, CW - 10) as string[];
+    const h = 9 + lines.length * 4.6 + 2;
+    ensure(h);
+    fill(SOFT);
+    doc.rect(ML, y, CW, h, "F");
+    fill(tone);
+    doc.rect(ML, y, 1.2, h, "F");
+    font("bold", 10, tone);
+    doc.text(title, ML + 5, y + 6);
+    font("normal", 9.5, INK);
+    lines.forEach((ln, i) => doc.text(ln, ML + 5, y + 11.5 + i * 4.6));
+    y += h + 4;
+  };
+
+  /** KPI ızgarası */
+  const kpis = (items: { label: string; value: string; sub?: string; tone?: RGB }[], cols = 4) => {
+    const gap = 3;
+    const w = (CW - gap * (cols - 1)) / cols;
+    const h = 19;
+    const rows = Math.ceil(items.length / cols);
+    ensure(rows * (h + gap));
+    items.forEach((it, i) => {
+      const cx = ML + (i % cols) * (w + gap);
+      const cy = y + Math.floor(i / cols) * (h + gap);
+      stroke(LINE);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(cx, cy, w, h, 1.2, 1.2, "S");
+      font("bold", 6.8, MUTED);
+      doc.text(it.label.toLocaleUpperCase("tr-TR"), cx + 3, cy + 5, { charSpace: 0.2 });
+      font("bold", 14, it.tone ?? NAVY_DEEP);
+      doc.text(it.value, cx + 3, cy + 12.2);
+      if (it.sub) {
+        font("normal", 7, MUTED);
+        doc.text(doc.splitTextToSize(it.sub, w - 6)[0] as string, cx + 3, cy + 16.4);
+      }
+    });
+    y += rows * (h + gap) + 2;
+  };
+
+  type Cell = string | { content: string; styles?: Record<string, unknown> };
+  /** Kurumsal tablo (autoTable). */
+  const table = (
+    head: string[],
+    body: Cell[][],
+    opts: {
+      align?: ("left" | "right" | "center")[];
+      widths?: (number | "auto")[];
+      tone?: (row: number, col: number) => RGB | undefined;
+      bold?: number[];
+      fontSize?: number;
+    } = {}
+  ) => {
+    ensure(18);
+    const columnStyles: Record<number, Record<string, unknown>> = {};
+    head.forEach((_, i) => {
+      columnStyles[i] = {
+        halign: opts.align?.[i] ?? (i === 0 ? "left" : "left"),
+        ...(opts.widths?.[i] != null && opts.widths[i] !== "auto" ? { cellWidth: opts.widths[i] } : {}),
+        ...(opts.bold?.includes(i) ? { fontStyle: "bold" } : {}),
+      };
+    });
+    autoTable(doc, {
+      startY: y,
+      head: [head],
+      body: body as never,
+      theme: "plain",
+      margin: { left: ML, right: MR, top: TOP, bottom: PH - BOTTOM },
+      styles: {
+        font: "Geist",
+        fontSize: opts.fontSize ?? 8.4,
+        textColor: INK,
+        cellPadding: { top: 1.9, bottom: 1.9, left: 2, right: 2 },
+        lineColor: LINE,
+        lineWidth: { bottom: 0.15 },
+        valign: "middle",
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fontStyle: "bold",
+        textColor: NAVY_DEEP,
+        fillColor: false as never,
+        lineColor: NAVY_DEEP,
+        lineWidth: { bottom: 0.45 },
+        fontSize: 7.6,
+      },
+      alternateRowStyles: { fillColor: [250, 251, 253] },
+      columnStyles: columnStyles as never,
+      didParseCell: (data) => {
+        if (data.section === "head") {
+          data.cell.styles.halign = (opts.align?.[data.column.index] ?? "left") as never;
+        }
+        if (data.section === "body" && opts.tone) {
+          const t = opts.tone(data.row.index, data.column.index);
+          if (t) {
+            data.cell.styles.textColor = t;
+            data.cell.styles.fontStyle = "bold";
+          }
+        }
+      },
+    });
+    y = lastY() + 5;
+  };
+
+  const emptyNote = (text: string) => {
+    ensure(10);
+    fill(SOFT);
+    doc.rect(ML, y, CW, 9, "F");
+    font("normal", 9, MUTED);
+    doc.text(text, ML + 4, y + 5.8);
+    y += 13;
+  };
+
+  // ─── Grafik: S-eğrisi ───
+  const sCurveChart = (points: SCurvePoint[], h = 72) => {
+    ensure(h + 12);
+    const x0 = ML + 10;
+    const x1 = ML + CW - 2;
+    const y0 = y + 3;
+    const y1 = y + h - 8;
+    const n = points.length;
+    // Izgara
+    doc.setLineWidth(0.15);
+    for (const g of [0, 25, 50, 75, 100]) {
+      const gy = y1 - (g / 100) * (y1 - y0);
+      stroke(g === 0 ? MUTED : LINE);
+      doc.line(x0, gy, x1, gy);
+      font("normal", 6.8, MUTED);
+      doc.text(`%${g}`, x0 - 1.5, gy + 1, { align: "right" });
+    }
+    if (n < 2) {
+      font("normal", 9, MUTED);
+      doc.text("Grafik için yeterli plan / gerçekleşme verisi yok.", (x0 + x1) / 2, (y0 + y1) / 2, { align: "center" });
+      y += h + 4;
+      return;
+    }
+    const X = (i: number) => x0 + (i / (n - 1)) * (x1 - x0);
+    const Y = (v: number) => y1 - (Math.min(100, Math.max(0, v)) / 100) * (y1 - y0);
+
+    // Gerçekleşen alanı
+    let lastReal = -1;
+    for (let i = 0; i < n; i++) {
+      if (Number.isFinite(points[i].realPct)) lastReal = i;
+      else break;
+    }
+    // Plan (kesikli)
+    stroke(PLAN);
+    doc.setLineWidth(0.55);
+    doc.setLineDashPattern([1.6, 1.1], 0);
+    for (let i = 1; i < n; i++) doc.line(X(i - 1), Y(points[i - 1].planPct), X(i), Y(points[i].planPct));
+    doc.setLineDashPattern([], 0);
+    // Gerçekleşen (dolu)
+    if (lastReal >= 1) {
+      stroke(NAVY_DEEP);
+      doc.setLineWidth(0.85);
+      for (let i = 1; i <= lastReal; i++) doc.line(X(i - 1), Y(points[i - 1].realPct), X(i), Y(points[i].realPct));
+    }
+    // Bugün
+    let todayIdx = -1;
+    for (let i = 0; i < n; i++) if (points[i].date <= today) todayIdx = i;
+    if (todayIdx >= 0) {
+      const tx = X(todayIdx);
+      stroke(BAD);
+      doc.setLineWidth(0.3);
+      doc.setLineDashPattern([0.8, 0.8], 0);
+      doc.line(tx, y0, tx, y1);
+      doc.setLineDashPattern([], 0);
+      font("bold", 6.8, BAD);
+      doc.text(`Rapor · ${formatDate(today)}`, Math.min(tx + 1.2, x1 - 22), y0 + 2.5);
+      fill(PLAN);
+      doc.circle(tx, Y(points[todayIdx].planPct), 0.9, "F");
+    }
+    if (lastReal >= 0) {
+      fill(NAVY_DEEP);
+      doc.circle(X(lastReal), Y(points[lastReal].realPct), 1.1, "F");
+    }
+    // X ekseni etiketleri
+    font("normal", 6.8, MUTED);
+    const ticks = 6;
+    for (let k = 0; k <= ticks; k++) {
+      const i = Math.round((k / ticks) * (n - 1));
+      doc.text(formatDate(points[i].date), X(i), y1 + 4, { align: k === 0 ? "left" : k === ticks ? "right" : "center" });
+    }
+    // Lejant
+    const ly = y + h - 0.5;
+    stroke(PLAN);
+    doc.setLineWidth(0.55);
+    doc.setLineDashPattern([1.6, 1.1], 0);
+    doc.line(x0, ly - 1, x0 + 8, ly - 1);
+    doc.setLineDashPattern([], 0);
+    font("normal", 7.5, INK);
+    doc.text(`Planlanan (%${formatNumber(planP, 1)})`, x0 + 10, ly);
+    stroke(NAVY_DEEP);
+    doc.setLineWidth(0.85);
+    doc.line(x0 + 52, ly - 1, x0 + 60, ly - 1);
+    doc.text(`Gerçekleşen (%${formatNumber(realP, 1)})`, x0 + 62, ly);
+    stroke(BAD);
+    doc.setLineWidth(0.3);
+    doc.setLineDashPattern([0.8, 0.8], 0);
+    doc.line(x0 + 108, ly - 2.5, x0 + 108, ly + 0.5);
+    doc.setLineDashPattern([], 0);
+    doc.text("Rapor tarihi", x0 + 110, ly);
+    y += h + 5;
+  };
+
+  /** Yatay oran çubuğu */
+  const ratioBar = (label: string, valueTxt: string, pct: number, tone: RGB) => {
+    ensure(10);
+    font("normal", 8.5, INK);
+    doc.text(label, ML, y + 3);
+    font("bold", 8.5, tone);
+    doc.text(valueTxt, ML + CW, y + 3, { align: "right" });
+    fill([238, 241, 246]);
+    doc.rect(ML, y + 4.8, CW, 2.2, "F");
+    fill(tone);
+    doc.rect(ML, y + 4.8, (CW * Math.max(0, Math.min(100, pct))) / 100, 2.2, "F");
+    y += 10;
+  };
+
+  /** Son 7 gün personel / makine sütun grafiği */
+  const weekBars = () => {
+    const h = 42;
+    ensure(h + 4);
+    const x0 = ML + 2;
+    const x1 = ML + CW;
+    const base = y + h - 9;
+    const top = y + 6;
+    const max = Math.max(1, ...days7.map((d) => Math.max(d.people, d.machines)));
+    const slot = (x1 - x0) / days7.length;
+    const bw = Math.min(9, slot * 0.28);
+    stroke(MUTED);
+    doc.setLineWidth(0.2);
+    doc.line(x0, base, x1, base);
+    days7.forEach((d, i) => {
+      const cx = x0 + slot * i + slot / 2;
+      const ph = ((base - top) * d.people) / max;
+      const mh = ((base - top) * d.machines) / max;
+      fill(NAVY_DEEP);
+      doc.rect(cx - bw - 0.4, base - ph, bw, ph, "F");
+      fill(PLAN);
+      doc.rect(cx + 0.4, base - mh, bw, mh, "F");
+      font("bold", 7, NAVY_DEEP);
+      if (d.people > 0) doc.text(String(d.people), cx - bw / 2 - 0.4, base - ph - 1, { align: "center" });
+      font("bold", 7, MUTED);
+      if (d.machines > 0) doc.text(String(d.machines), cx + bw / 2 + 0.4, base - mh - 1, { align: "center" });
+      font(d.d === today ? "bold" : "normal", 7, d.d === today ? NAVY_DEEP : MUTED);
+      doc.text(formatDate(d.d).slice(0, 5), cx, base + 4, { align: "center" });
+    });
+    // Lejant
+    const ly = y + h - 0.5;
+    fill(NAVY_DEEP);
+    doc.rect(x0, ly - 2.4, 3, 2.4, "F");
+    font("normal", 7.5, INK);
+    doc.text("Personel (kişi)", x0 + 4.5, ly);
+    fill(PLAN);
+    doc.rect(x0 + 30, ly - 2.4, 3, 2.4, "F");
+    doc.text("Makine (adet)", x0 + 34.5, ly);
+    y += h + 4;
+  };
+
+  // ════════════════════════════════════════════════════════════════════
+  // KAPAK (sayfa 1) — içindekiler en sonda doldurulur
+  // ════════════════════════════════════════════════════════════════════
+  const drawCover = () => {
+    fill(NAVY_DEEP);
+    doc.rect(0, 0, PW, 122, "F");
+    fill(NAVY);
+    doc.rect(0, 118, PW, 4, "F");
+
+    // Logo işareti
+    fill([30, 41, 59]);
+    doc.roundedRect(ML, 16, 10, 10, 2, 2, "F");
+    fill(WHITE);
+    doc.rect(ML + 2.4, 21.8, 1.4, 2.4, "F");
+    doc.rect(ML + 4.4, 20.1, 1.4, 4.1, "F");
+    doc.rect(ML + 6.4, 18.4, 1.4, 5.8, "F");
+    fill([5, 150, 105]);
+    doc.circle(ML + 8.3, 18, 0.9, "F");
+    font("bold", 8.5, WHITE);
+    doc.text(brand.toLocaleUpperCase("tr-TR"), ML + 13, 22.2, { charSpace: 0.5 });
+    font("normal", 8, COVER_LABEL);
+    doc.text(`Rapor No: YÖ-${today.replace(/-/g, "")}`, PW - MR, 22.2, { align: "right" });
+
+    font("bold", 8.5, COVER_LABEL);
+    doc.text("YÖNETİM ÖZETİ  ·  PROJE DURUM RAPORU", ML, 50, { charSpace: 0.8 });
+    font("bold", 25, WHITE);
+    const nameLines = (doc.splitTextToSize(project.name, CW) as string[]).slice(0, 2);
+    nameLines.forEach((ln, i) => doc.text(ln, ML, 62 + i * 10));
+    let cy = 62 + (nameLines.length - 1) * 10 + 8;
+    const subParts = [
+      project.location,
+      project.installedCapacityMw != null ? `${formatNumber(project.installedCapacityMw, 2)} MW` : "",
+      contractAmount ? `Sözleşme bedeli ${money(contractAmount, cur)}` : "",
+    ].filter(Boolean);
+    font("normal", 10, COVER_SUB);
+    doc.text(subParts.join("   ·   "), ML, cy);
+    cy += 4;
+
+    // Künye satırı
+    const facts: [string, string][] = [
+      ["İŞVEREN", project.investorName || "—"],
+      ["YÜKLENİCİ", project.mainContractorName || "—"],
+      ["RAPOR TARİHİ", formatDate(today)],
+      ["PROJE DURUMU", STATUS_LABEL[project.status] ?? project.status],
+    ];
+    stroke([60, 84, 130]);
+    doc.setLineWidth(0.2);
+    doc.line(ML, 96, ML + CW, 96);
+    const fw = CW / facts.length;
+    facts.forEach(([k, v], i) => {
+      const fx = ML + i * fw;
+      font("bold", 6.8, COVER_LABEL);
+      doc.text(k, fx, 102.5, { charSpace: 0.4 });
+      font("bold", 9.5, WHITE);
+      doc.text(doc.splitTextToSize(v, fw - 4)[0] as string, fx, 108.5);
+    });
+
+    // Genel durum şeridi
+    let gy = 134;
+    fill(statusTone);
+    doc.roundedRect(ML, gy, 44, 9, 1.5, 1.5, "F");
+    font("bold", 8.5, WHITE);
+    doc.text(statusText, ML + 22, gy + 6, { align: "center", charSpace: 0.4 });
+    font("normal", 9.5, INK);
+    const verdictLine =
+      lvl == null
+        ? "Plan verisi yetersiz olduğundan performans endeksi hesaplanamadı."
+        : `Gerçekleşen ilerleme %${formatNumber(realP, 1)}, plan %${formatNumber(planP, 1)} — sapma ${signed(devP)} puan, SPI ${spiTxt(spi)}.`;
+    doc.text(doc.splitTextToSize(verdictLine, CW - 50) as string[], ML + 49, gy + 6);
+    gy += 16;
+
+    // Manşet göstergeler
+    const stats: { l: string; v: string; s: string; t?: RGB }[] = [
+      { l: "Planlanan", v: pct1(planP), s: "kümülatif ilerleme" },
+      { l: "Gerçekleşen", v: pct1(realP), s: "kümülatif ilerleme", t: statusTone },
+      { l: "SPI", v: spiTxt(spi), s: "zaman performansı", t: statusTone },
+      { l: "Süre Kullanımı", v: `%${formatNumber(durationPct, 0)}`, s: `${elapsed} / ${project.durationDays} gün` },
+      { l: "Kalan Süre", v: `${remainingDays} gün`, s: `Plan bitiş ${formatDate(project.plannedEnd)}` },
+    ];
+    const sw = CW / stats.length;
+    stroke(LINE);
+    doc.setLineWidth(0.25);
+    doc.line(ML, gy, ML + CW, gy);
+    doc.line(ML, gy + 24, ML + CW, gy + 24);
+    stats.forEach((s, i) => {
+      const sx = ML + i * sw;
+      if (i > 0) doc.line(sx, gy + 3, sx, gy + 21);
+      font("bold", 6.8, MUTED);
+      doc.text(s.l.toLocaleUpperCase("tr-TR"), sx + (i > 0 ? 3 : 0), gy + 7, { charSpace: 0.3 });
+      font("bold", 15, s.t ?? NAVY_DEEP);
+      doc.text(s.v, sx + (i > 0 ? 3 : 0), gy + 15);
+      font("normal", 7, MUTED);
+      doc.text(s.s, sx + (i > 0 ? 3 : 0), gy + 19.5);
+    });
+  };
+  drawCover();
+
+  // ════════════════════════════════════════════════════════════════════
+  // İÇ SAYFALAR
+  // ════════════════════════════════════════════════════════════════════
+  newPage();
+
+  // 01 — Yönetici Özeti
+  h2("Yönetici Özeti", 60);
+  const verdictTitle =
+    lvl === "good"
+      ? "Proje plana uygun ilerliyor"
+      : lvl === "warn"
+        ? "Proje plan gerisinde — yakın takip gerekiyor"
+        : lvl === "bad"
+          ? "Proje belirgin şekilde plan gerisinde — acil aksiyon gerekiyor"
+          : "Performans değerlendirmesi için veri yetersiz";
+  callout(
+    verdictTitle,
+    `${project.name} projesinde ${formatDate(today)} itibarıyla gerçekleşen ilerleme %${formatNumber(realP, 1)}, ` +
+      `planlanan ilerleme %${formatNumber(planP, 1)} olup sapma ${signed(devP)} puandır` +
+      `${spi != null ? ` (SPI ${spiTxt(spi)})` : ""}. Süre kullanımı %${formatNumber(durationPct, 0)} olup ` +
+      `plan bitiş tarihine (${formatDate(project.plannedEnd)}) ${remainingDays} gün kalmıştır.`,
+    statusTone
+  );
+  kpis([
+    { label: "Planlanan İlerleme", value: pct1(planP), sub: "Rapor tarihine kadar" },
+    { label: "Gerçekleşen İlerleme", value: pct1(realP), sub: "Sahada tamamlanan", tone: statusTone },
+    { label: "Sapma", value: `${signed(devP)} puan`, sub: "Gerçekleşen − Plan", tone: devP >= 0 ? GOOD : BAD },
+    { label: "SPI", value: spiTxt(spi), sub: "≥ 0,95 sağlıklı", tone: statusTone },
+    { label: "Geçen Süre", value: `${elapsed} gün`, sub: `Toplam ${project.durationDays} gün` },
+    { label: "Faturalanan", value: contractAmount > 0 ? pct1(invoicedPct) : "—", sub: "Sözleşme bedeline oranı" },
+    { label: "Açık Kritik İş", value: String(critOpen), sub: `${overdueLookahead} kalem termini geçmiş`, tone: critOpen > 0 ? BAD : undefined },
+    { label: "Bugün Sahada", value: `${todayPersonnel} kişi`, sub: `${todayMachines} makine` },
+  ]);
+
+  h3("Öne Çıkan Hususlar", 20);
+  const lagging = sections
+    .map((s) => ({ s, dev: (s.realPct - s.planPct) * 100 }))
+    .filter((x) => x.dev < -3)
+    .sort((a, b) => a.dev - b.dev)
+    .slice(0, 3);
+  bullet(
+    `Genel ilerleme planın ${devP >= 0 ? "üzerinde" : "gerisinde"} (${signed(devP)} puan). ` +
+      (lagging.length
+        ? `En çok geride kalan bölümler: ${lagging.map((x) => `${x.s.name} (${signed(x.dev, 0)} puan)`).join(", ")}.`
+        : "Bölümler arasında belirgin bir gerileme bulunmuyor."),
+    statusTone
+  );
+  bullet(
+    critOpen > 0 || overdueLookahead > 0
+      ? `${critOpen} kritik öncelikli açık iş bulunuyor; ${overdueLookahead} kalemin termini geçmiş. Önümüzdeki 15 gün içinde ${next15.length} kritik iş takip edilmeli.`
+      : `Termini geçmiş açık iş yok; önümüzdeki 15 günde ${next15.length} kritik iş takipte.`,
+    critOpen > 0 || overdueLookahead > 0 ? BAD : GOOD
+  );
+  if (projProc.length > 0) {
+    bullet(
+      `Satın alma: toplam ${projProc.length} kalem — ${procDone} teslim alındı, ${procOpen} açık` +
+        `${procCritical > 0 ? ` (${procCritical} kritik)` : ""}.` +
+        (procOverdue > 0 ? ` ${procOverdue} kalemde planlanan tarih aşılmış.` : " Gecikmiş tedarik adımı yok."),
+      procOverdue > 0 ? WARN : NAVY
+    );
+  }
+  if (contractAmount > 0) {
+    bullet(
+      `Faturalanan tutar sözleşme bedelinin %${formatNumber(invoicedPct, 1)} kadarı, tahsil edilen %${formatNumber(paidPct, 1)} kadarıdır ` +
+        `(fiziksel ilerleme %${formatNumber(realP, 1)}).`,
+      NAVY
+    );
+  }
+  bullet(
+    `Bugün sahada ${todayPersonnel} personel (${formatNumber(todayManhours, 0)} adam-saat) ve ${todayMachines} makine çalıştı; ` +
+      `proje başından bu yana toplam ${formatNumber(totalManhours, 0)} adam-saat harcandı.`,
+    NAVY
+  );
+  if (latestReport?.workStopped) {
+    bullet(
+      `${formatDate(latestReport.reportDate)} tarihinde iş durdu${latestReport.workStoppedReason ? `: ${latestReport.workStoppedReason}` : "."}`,
+      BAD
+    );
+  }
+
+  // 02 — İlerleme Durumu
+  h2("İlerleme Durumu", 90);
+  h3("Plan / Gerçekleşme S-Eğrisi", 75);
+  sCurveChart(sCurve);
+  if (sections.length > 0) {
+    h3("Bölüm Bazında İlerleme");
+    table(
+      ["Kod", "Bölüm", "Kalem", "Plan", "Gerçekleşen", "Sapma (puan)", "SPI", "Durum"],
+      sections.map((s) => {
+        const dv = (s.realPct - s.planPct) * 100;
+        const l = spiLevel(s.spi);
+        return [
+          s.code,
+          s.name,
+          String(s.leafCount),
+          pct1(s.planPct * 100),
+          pct1(s.realPct * 100),
+          signed(dv),
+          spiTxt(s.spi),
+          l === "good" ? "Planda" : l === "warn" ? "Takipte" : l === "bad" ? "Geride" : "—",
+        ];
+      }),
+      {
+        align: ["left", "left", "right", "right", "right", "right", "right", "left"],
+        widths: [14, "auto", 13, 16, 22, 22, 13, 18],
+        tone: (r, c) => {
+          const s = sections[r];
+          if (c === 5) return (s.realPct - s.planPct) * 100 >= 0 ? GOOD : BAD;
+          if (c === 6 || c === 7) {
+            const l = spiLevel(s.spi);
+            return l === "good" ? GOOD : l === "warn" ? WARN : l === "bad" ? BAD : undefined;
+          }
+          return undefined;
+        },
+      }
+    );
+  }
+
+  // 03 — Son 7 Gün Faaliyetleri
+  h2("Son 7 Gün Faaliyetleri", 30);
+  paragraph(
+    `${formatDate(weekStart)} – ${formatDate(today)} döneminde gerçekleşme girilen iş kalemleri; dönem miktarı ile ` +
+      `rapor tarihine kadarki kümülatif plan ve gerçekleşme karşılaştırması.`,
+    8.5,
+    MUTED
+  );
+  y += 1;
+  if (activity.length === 0) {
+    emptyNote("Bu dönemde gerçekleşme kaydı bulunmuyor.");
+  } else {
+    table(
+      ["WBS", "İş Kalemi", "Birim", "7 Gün", "Plan (kümül.)", "Gerçek. (kümül.)", "Toplam", "Kalan", "İlerleme"],
+      activity.slice(0, 30).map((a) => [
+        a.code,
+        a.name,
+        a.unit,
+        qty(a.week),
+        qty(a.planCum),
+        qty(a.cum),
+        qty(a.total),
+        qty(Math.max(0, a.total - a.cum)),
+        a.total > 0 ? pct1(Math.min(100, (a.cum / a.total) * 100)) : "—",
+      ]),
+      {
+        align: ["left", "left", "left", "right", "right", "right", "right", "right", "right"],
+        widths: [15, "auto", 12, 15, 19, 20, 16, 15, 19],
+        fontSize: 7.8,
+        bold: [3],
+        tone: (r, c) => (c === 5 ? (activity[r].cum >= activity[r].planCum ? GOOD : BAD) : undefined),
+      }
+    );
+    if (activity.length > 30) paragraph(`… ve ${activity.length - 30} kalem daha.`, 8, MUTED);
+  }
+
+  // 04 — Kaynak Durumu
+  h2("Kaynak Durumu · Personel ve Ekipman", 70);
+  kpis([
+    { label: "Bugün Personel", value: String(todayPersonnel), sub: `${formatNumber(todayManhours, 0)} adam-saat` },
+    { label: "Bugün Makine", value: String(todayMachines), sub: "sahada çalışan" },
+    { label: "Toplam Adam-Saat", value: formatNumber(totalManhours, 0), sub: `${uniquePersonnel} farklı personel` },
+    { label: "Toplam Makine-Saat", value: formatNumber(totalMachineHours, 0), sub: `${uniqueMachines} farklı makine` },
+  ]);
+  h3("Son 7 Gün Sahadaki Kaynak", 46);
+  weekBars();
+  if (disciplineRows.length > 0) {
+    h3("Disipline Göre Adam-Saat (Proje Başından Bu Yana)");
+    table(
+      ["Disiplin", "Adam-Saat", "Adam-Gün", "Kişi", "Pay", "Başlıca Firmalar"],
+      disciplineRows.map((d) => {
+        const entries = Object.entries(discCompany[d.discipline] ?? {}).sort((a, b) => b[1] - a[1]);
+        const tot = entries.reduce((s, [, h]) => s + h, 0);
+        return [
+          getDisciplineLabel(d.discipline),
+          formatNumber(d.hours, 0),
+          formatNumber(d.manDays, 0),
+          String(d.uniquePeople),
+          totalManhours > 0 ? pct1((d.hours / totalManhours) * 100) : "—",
+          entries
+            .slice(0, 3)
+            .map(([c, h]) => `${c} (%${tot > 0 ? Math.round((h / tot) * 100) : 0})`)
+            .join(", "),
+        ];
+      }),
+      { align: ["left", "right", "right", "right", "right", "left"], widths: [26, 20, 18, 12, 15, "auto"] }
+    );
+  }
+  if (todayByCompany.size > 0) {
+    h3("Bugün Sahadaki Personel · Firma Dağılımı");
+    const rows = Array.from(todayByCompany.entries()).sort((a, b) => a[0].localeCompare(b[0], "tr"));
+    table(
+      ["Firma", "Kişi", "Pozisyonlar"],
+      rows.map(([c, m]) => [
+        c,
+        String(Array.from(m.values()).reduce((s, v) => s + v, 0)),
+        Array.from(m.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([j, n]) => `${j} ${n}`)
+          .join(" · "),
+      ]),
+      { align: ["left", "right", "left"], widths: [48, 14, "auto"], bold: [1] }
+    );
+  }
+  if (todayMachineByCompany.size > 0) {
+    h3("Bugün Sahadaki Makineler · Firma Dağılımı");
+    const rows = Array.from(todayMachineByCompany.entries()).sort((a, b) => a[0].localeCompare(b[0], "tr"));
+    table(
+      ["Firma", "Adet", "Makine Tipleri"],
+      rows.map(([c, m]) => [
+        c,
+        String(Array.from(m.values()).reduce((s, v) => s + v, 0)),
+        Array.from(m.entries())
+          .map(([t, n]) => `${cap(t)} ${n}`)
+          .join(" · "),
+      ]),
+      { align: ["left", "right", "left"], widths: [48, 14, "auto"], bold: [1] }
+    );
+  }
+
+  // 05 — Finansal Durum
+  if (contractAmount > 0 || projBilling.length > 0) {
+    h2("Finansal Durum · İşveren Hakedişleri", 55);
+    table(
+      ["Kalem", "Tutar", "Sözleşmeye Oranı"],
+      [
+        ["Sözleşme Bedeli", money(contractAmount, cur), contractAmount > 0 ? "%100,0" : "—"],
+        ["Faturalanan", money(ownerInvoiced, cur), contractAmount > 0 ? pct1(invoicedPct) : "—"],
+        ["Tahsil Edilen", money(ownerPaid, cur), contractAmount > 0 ? pct1(paidPct) : "—"],
+        ["Tahsil Bekleyen Fatura", money(Math.max(0, ownerInvoiced - ownerPaid), cur), contractAmount > 0 ? pct1(invoicedPct - paidPct) : "—"],
+        ["Faturalanmamış Bakiye", money(Math.max(0, contractAmount - ownerInvoiced), cur), contractAmount > 0 ? pct1(Math.max(0, 100 - invoicedPct)) : "—"],
+      ],
+      { align: ["left", "right", "right"], widths: ["auto", 50, 36], bold: [1] }
+    );
+    if (contractAmount > 0) {
+      ratioBar("Fiziksel ilerleme", pct1(realP), realP, NAVY_DEEP);
+      ratioBar("Faturalanan", pct1(invoicedPct), invoicedPct, PLAN);
+      ratioBar("Tahsil edilen", pct1(paidPct), paidPct, GOOD);
     }
   }
-  const realFillPath =
-    lastRealIdx >= 0
-      ? `${realPath} L${toX(lastRealIdx).toFixed(1)},${(pad.t + innerH).toFixed(1)} L${toX(0).toFixed(1)},${(pad.t + innerH).toFixed(1)} Z`
-      : "";
 
-  // Bugün
-  let todayIdx = -1;
-  for (let i = 0; i < n; i++) if (points[i].date <= reportDate) todayIdx = i;
-  const todayX = todayIdx >= 0 ? toX(todayIdx) : null;
+  // 06 — Satın Alma ve Tedarik
+  if (projProc.length > 0) {
+    h2("Satın Alma ve Tedarik", 50);
+    kpis([
+      { label: "Toplam Kalem", value: String(projProc.length) },
+      { label: "Açık", value: String(procOpen) },
+      { label: "Teslim Alındı", value: String(procDone), tone: GOOD },
+      { label: "Kritik Açık", value: String(procCritical), tone: procCritical > 0 ? BAD : undefined },
+    ]);
+    if (procFollow.length === 0) {
+      emptyNote("Yaklaşan veya geciken tedarik adımı bulunmuyor.");
+    } else {
+      h3("Takipteki Tedarik Kalemleri");
+      const rows = procFollow.map((p) => {
+        const m = p.nextMilestone ?? p.milestones[p.milestones.length - 1];
+        const state = m.isCompleted
+          ? "Tamamlandı"
+          : m.daysFromToday == null
+            ? "—"
+            : m.daysFromToday < 0
+              ? `${-m.daysFromToday} gün gecikme`
+              : m.daysFromToday === 0
+                ? "Bugün"
+                : `${m.daysFromToday} gün kaldı`;
+        return { p, m, state };
+      });
+      table(
+        ["Malzeme", "Tedarikçi", "Kritik", "Sonraki Adım", "Plan Tarihi", "Durum"],
+        rows.map(({ p, m, state }) => [
+          p.item.material,
+          p.item.supplier ?? "—",
+          p.isCritical ? "Evet" : "",
+          m.label,
+          m.plannedDate ? formatDate(m.plannedDate) : "—",
+          state,
+        ]),
+        {
+          align: ["left", "left", "center", "left", "right", "right"],
+          widths: ["auto", 38, 14, 22, 22, 26],
+          tone: (r, c) => {
+            if (c === 2 && rows[r].p.isCritical) return BAD;
+            if (c === 5) return rows[r].m.isCompleted ? GOOD : rows[r].m.isOverdue ? BAD : rows[r].m.isUpcoming ? WARN : undefined;
+            return undefined;
+          },
+        }
+      );
+    }
+  }
 
-  const grids = (labels ? [0, 0.25, 0.5, 0.75, 1] : [0, 0.5, 1])
-    .map((g) => {
-      const y = pad.t + (1 - g) * innerH;
-      return `
-        <line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>
-        ${labels ? `<text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#94a3b8" font-family="JetBrains Mono, monospace">${(g * 100).toFixed(0)}%</text>` : ""}
-      `;
-    })
-    .join("");
+  // 07 — Kritik İşler ve Aksiyon Planı
+  h2("Kritik İşler ve Aksiyon Planı", 30);
+  h3("Önümüzdeki 15 Gün · Kritik İşler", 15);
+  if (next15.length === 0) {
+    emptyNote("Önümüzdeki 15 gün için açık kritik iş bulunmuyor.");
+  } else {
+    table(
+      ["Termin", "Konu", "Sorumlu", "Öncelik", "Durum"],
+      next15.map((l) => {
+        const d = daysBetween(today, l.date);
+        return [
+          formatDate(l.date),
+          l.notes ? { content: `${l.task}\n${l.notes.split(/\r?\n/)[0]}` } : l.task,
+          l.owner ?? "—",
+          PRIORITY_LABEL[l.priority] ?? "—",
+          d < 0 ? `${-d} gün gecikti` : d === 0 ? "Bugün" : `${d} gün kaldı`,
+        ];
+      }),
+      {
+        align: ["left", "left", "left", "left", "right"],
+        widths: [20, "auto", 34, 17, 24],
+        tone: (r, c) => {
+          const l = next15[r];
+          if (c === 3) return l.priority === "critical" ? BAD : l.priority === "high" ? WARN : undefined;
+          if (c === 4) {
+            const d = daysBetween(today, l.date);
+            return d < 0 ? BAD : d <= 3 ? WARN : undefined;
+          }
+          return undefined;
+        },
+      }
+    );
+  }
+  if (claims.length > 0) {
+    h3("Açık Claim, Tutanak ve Yazışmalar");
+    table(
+      ["Tarih", "Tür", "Konu", "Sorumlu"],
+      claims.map((l) => [formatDate(l.date), KIND_LABEL[l.kind ?? "kritik_is"] ?? "—", l.task, l.owner ?? "—"]),
+      { align: ["left", "left", "left", "left"], widths: [20, 22, "auto", 38] }
+    );
+  }
 
-  const xLabels = labels
-    ? [0, Math.floor(n / 2), n - 1]
-        .map(
-          (i) =>
-            `<text x="${toX(i)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#94a3b8" font-family="JetBrains Mono, monospace">${formatDate(points[i].date).slice(0, 5)}</text>`
-        )
-        .join("")
-    : "";
+  // 08 — Saha Durumu
+  if (latestReport) {
+    h2("Saha Durumu", 40);
+    const tempTxt =
+      latestReport.temperatureMin != null && latestReport.temperatureMax != null
+        ? `${latestReport.temperatureMin}–${latestReport.temperatureMax} °C`
+        : "";
+    const meta = [
+      `Son günlük rapor: ${formatDate(latestReport.reportDate)}`,
+      latestReport.weather,
+      tempTxt,
+      latestReport.wind,
+    ]
+      .filter(Boolean)
+      .join("   ·   ");
+    paragraph(meta, 8.5, MUTED);
+    y += 2;
+    const blocks: [string, string | undefined][] = [
+      ["Saha Özeti", latestReport.summary],
+      ["Sorunlar / Engeller", latestReport.issues],
+      ["Yarın İçin Plan", latestReport.tomorrowPlan],
+    ];
+    for (const [t, v] of blocks) {
+      if (!v?.trim()) continue;
+      h3(t, 10);
+      paragraph(v.trim(), 9.5, INK);
+      y += 2;
+    }
+    if (photoSlots.length > 0) {
+      h3("Saha Fotoğrafları", 62);
+      const pw = (CW - 6) / 2;
+      const ph = pw * (57 / 85);
+      for (let i = 0; i < photoSlots.length; i += 2) {
+        ensure(ph + 8);
+        for (let k = 0; k < 2 && i + k < photoSlots.length; k++) {
+          const s = photoSlots[i + k];
+          const px = ML + k * (pw + 6);
+          doc.addImage(s.data, "JPEG", px, y, pw, ph);
+          stroke(LINE);
+          doc.setLineWidth(0.2);
+          doc.rect(px, y, pw, ph, "S");
+          font("normal", 7.5, MUTED);
+          doc.text(
+            doc.splitTextToSize(s.caption || `Fotoğraf ${i + k + 1} · ${formatDate(latestReport.reportDate)}`, pw)[0] as string,
+            px,
+            y + ph + 4
+          );
+        }
+        y += ph + 8;
+      }
+    }
+  }
 
-  return `
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
-      <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
-      ${grids}
-      ${realFillPath ? `<path d="${realFillPath}" fill="#10b981" fill-opacity="0.12"/>` : ""}
-      <path d="${planPath}" fill="none" stroke="#2563eb" stroke-width="${labels ? 2.2 : 1.6}" stroke-dasharray="5 4" stroke-linejoin="round"/>
-      ${realPath ? `<path d="${realPath}" fill="none" stroke="#10b981" stroke-width="${labels ? 2.6 : 1.8}" stroke-linejoin="round"/>` : ""}
-      ${todayX != null
-        ? `<line x1="${todayX}" y1="${pad.t}" x2="${todayX}" y2="${pad.t + innerH}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="3 3"/>
-           ${labels && lastRealIdx >= 0 ? `<circle cx="${toX(lastRealIdx)}" cy="${toY(points[lastRealIdx].realPct)}" r="4" fill="#10b981" stroke="white" stroke-width="2"/>` : ""}
-           ${labels ? `<circle cx="${todayX}" cy="${toY(points[todayIdx].planPct)}" r="4" fill="#2563eb" stroke="white" stroke-width="2"/>` : ""}`
-        : ""}
-      ${xLabels}
-    </svg>
-  `;
+  // 09 — Proje Künyesi ve Onay
+  h2("Proje Künyesi ve Onay", 90);
+  const kv: [string, string][] = [
+    ["Proje Adı", project.name],
+    ["Lokasyon", project.location || "—"],
+    ["İşveren", project.investorName || "—"],
+    ["Yüklenici", project.mainContractorName || "—"],
+    ["Kurulu Güç", project.installedCapacityMw != null ? `${formatNumber(project.installedCapacityMw, 2)} MW` : "—"],
+    ["Sözleşme Bedeli", contractAmount ? money(contractAmount, cur) : "—"],
+    ["Başlangıç", formatDate(project.startDate)],
+    ["Plan Bitiş", formatDate(project.plannedEnd)],
+    ["Sözleşme Bitiş", formatDate(project.contractEnd)],
+    ["Toplam Süre", `${project.durationDays} gün`],
+    ["Durum", STATUS_LABEL[project.status] ?? project.status],
+    ["Rapor Tarihi", formatDate(today)],
+  ];
+  const kvRows: string[][] = [];
+  for (let i = 0; i < kv.length; i += 2) kvRows.push([kv[i][0], kv[i][1], kv[i + 1]?.[0] ?? "", kv[i + 1]?.[1] ?? ""]);
+  autoTable(doc, {
+    startY: y,
+    body: kvRows,
+    theme: "plain",
+    margin: { left: ML, right: MR, top: TOP, bottom: PH - BOTTOM },
+    styles: {
+      font: "Geist",
+      fontSize: 8.6,
+      textColor: INK,
+      cellPadding: { top: 2, bottom: 2, left: 2, right: 2 },
+      lineColor: LINE,
+      lineWidth: { bottom: 0.15 },
+    },
+    columnStyles: {
+      0: { textColor: MUTED, cellWidth: 30 },
+      1: { fontStyle: "bold", cellWidth: 59 },
+      2: { textColor: MUTED, cellWidth: 30 },
+      3: { fontStyle: "bold", cellWidth: 59 },
+    },
+  });
+  y = lastY() + 10;
+
+  // İmza bloğu
+  ensure(40);
+  font("bold", 9.5, NAVY);
+  doc.text("ONAY", ML, y + 3.5, { charSpace: 0.3 });
+  y += 7;
+  const roles: [string, string][] = [
+    ["Hazırlayan", preparedBy ?? ""],
+    ["Kontrol Eden", ""],
+    ["Onaylayan", ""],
+  ];
+  const gw = 5;
+  const bw = (CW - gw * 2) / 3;
+  roles.forEach(([r, name], i) => {
+    const bx = ML + i * (bw + gw);
+    stroke(LINE);
+    doc.setLineWidth(0.25);
+    doc.rect(bx, y, bw, 30, "S");
+    fill(SOFT);
+    doc.rect(bx, y, bw, 7, "F");
+    font("bold", 8, NAVY_DEEP);
+    doc.text(r.toLocaleUpperCase("tr-TR"), bx + 3, y + 4.8, { charSpace: 0.3 });
+    font("normal", 7.5, MUTED);
+    doc.text("Ad Soyad:", bx + 3, y + 12);
+    if (name) {
+      font("bold", 8, INK);
+      doc.text(doc.splitTextToSize(name, bw - 20)[0] as string, bx + 17, y + 12);
+    }
+    font("normal", 7.5, MUTED);
+    doc.text("Tarih:", bx + 3, y + 18);
+    doc.text("İmza:", bx + 3, y + 24);
+  });
+  y += 36;
+  paragraph(
+    `Bu rapor ${brand} üzerinde kayıtlı planlama, gerçekleşme, puantaj, satın alma ve hakediş verilerinden ` +
+      `${formatDate(toISODate(new Date()))} tarihinde derlenmiştir.`,
+    7.5,
+    MUTED
+  );
+
+  // ════════════════════════════════════════════════════════════════════
+  // KAPAK — İÇİNDEKİLER + TÜM SAYFALARA ÜST/ALT BİLGİ
+  // ════════════════════════════════════════════════════════════════════
+  const total = doc.getNumberOfPages();
+  doc.setPage(1);
+  let ty = 190;
+  font("bold", 9.5, NAVY);
+  doc.text("İÇİNDEKİLER", ML, ty, { charSpace: 0.4 });
+  stroke(NAVY_DEEP);
+  doc.setLineWidth(0.4);
+  doc.line(ML, ty + 2.5, ML + CW, ty + 2.5);
+  ty += 9;
+  for (const t of toc) {
+    font("bold", 9, PLAN);
+    doc.text(t.num, ML, ty);
+    font("normal", 9.5, INK);
+    doc.text(t.title, ML + 9, ty);
+    const tw = doc.getTextWidth(t.title);
+    stroke(LINE);
+    doc.setLineWidth(0.2);
+    doc.setLineDashPattern([0.4, 1], 0);
+    doc.line(ML + 11 + tw, ty - 0.8, ML + CW - 8, ty - 0.8);
+    doc.setLineDashPattern([], 0);
+    font("bold", 9, NAVY_DEEP);
+    doc.text(String(t.page), ML + CW, ty, { align: "right" });
+    ty += 7;
+  }
+  // Kapak alt bilgisi
+  stroke(LINE);
+  doc.setLineWidth(0.2);
+  doc.line(ML, 274, ML + CW, 274);
+  font("normal", 7.5, MUTED);
+  doc.text(`Hazırlayan: ${preparedBy ?? "—"}`, ML, 279);
+  doc.text(`Oluşturulma: ${formatDate(toISODate(new Date()))}`, PW / 2, 279, { align: "center" });
+  doc.text("Gizli · Kurum içi kullanım içindir", PW - MR, 279, { align: "right" });
+
+  for (let p = 2; p <= total; p++) {
+    doc.setPage(p);
+    // Üst bilgi
+    font("bold", 8, NAVY_DEEP);
+    doc.text(doc.splitTextToSize(project.name, 110)[0] as string, ML, 12);
+    font("normal", 8, MUTED);
+    doc.text(`Yönetim Özeti · ${formatDate(today)}`, PW - MR, 12, { align: "right" });
+    stroke(NAVY_DEEP);
+    doc.setLineWidth(0.4);
+    doc.line(ML, 15, PW - MR, 15);
+    // Alt bilgi
+    stroke(LINE);
+    doc.setLineWidth(0.2);
+    doc.line(ML, 286, PW - MR, 286);
+    font("normal", 7, MUTED);
+    doc.text(brand, ML, 290.5);
+    doc.text("Gizli · Kurum içi kullanım içindir", PW / 2, 290.5, { align: "center" });
+    font("bold", 7, NAVY_DEEP);
+    doc.text(`Sayfa ${p} / ${total}`, PW - MR, 290.5, { align: "right" });
+  }
+
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "-");
+  doc.save(`${safeName}-Yonetim-Ozeti-${today}.pdf`);
 }
