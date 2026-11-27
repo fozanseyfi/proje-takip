@@ -85,6 +85,10 @@ export default function DailyReportPage() {
   const upsertReport = useStore((s) => s.upsertDailyReport);
   const personnelAttendance = useStore((s) => s.personnelAttendance);
   const machineAttendance = useStore((s) => s.machineAttendance);
+  const lookahead = useStore((s) => s.lookahead);
+  const procurement = useStore((s) => s.procurement);
+  const personnelMaster = useStore((s) => s.personnelMaster);
+  const machinesMaster = useStore((s) => s.machinesMaster);
   const wbs = useProjectWbs(project?.id);
   const realized = useProjectRealized(project?.id);
   const planned = useProjectPlanned(project?.id);
@@ -274,6 +278,10 @@ export default function DailyReportPage() {
       wbs,
       realized,
       planned,
+      lookahead,
+      procurement,
+      personnel: personnelMaster,
+      machines: machinesMaster,
       preparedBy: user?.fullName,
     });
     toast("Rapor kaydedildi, DCR PDF indirildi", "success");

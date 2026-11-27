@@ -1,438 +1,562 @@
 /**
- * DCR (Daily Construction Report) — Saha mühendisinin imzalanan günlük raporu.
+ * DCR (Daily Construction Report) — imzalanan günlük saha raporu.
  *
- * Tek sayfa A4. İçerik:
- *   - Brand header (proje + tarih + günlük no)
- *   - Hava durumu kutusu (otomatik veya manuel)
- *   - İş durdu uyarısı (varsa)
- *   - Personel & makine sayıları (puantajdan)
- *   - O gün gerçekleşen WBS aktiviteleri (realization'dan)
- *   - Özet / sorunlar / yarın planı (saha mühendisinin notları)
- *   - Foto thumbnail grid (rapor foto'larından)
- *   - İmza alanı: Saha mühendisi + İşveren temsilcisi
+ * Yönetim Özeti ile aynı kurumsal altyapı (./kit): jsPDF + autotable ile
+ * vektörel çizim; ekran görüntüsü yok.
  *
- * Emerald gradient header + Geist font Türkçe destekli.
+ * İçerik — her gün takip edilmesi ve aksiyon alınması gerekenler önde:
+ *   Antet  — proje, tarih, proje günü, hava durumu
+ *   Günün göstergeleri (personel / makine / ilerleme / SPI / açık aksiyon)
+ *   01 Aksiyon Gerektiren Konular — geciken / yaklaşan kritik işler, tedarik
+ *      gecikmeleri, plan gerisindeki kalemler, bugün planlanıp girilmeyen işler
+ *   02 Bugün Gerçekleşen İmalatlar — bu gün + bugüne kadar plan/gerçek/kalan
+ *   03 Plan Gerisindeki Kalemler
+ *   04 Yarın Planlanan İmalatlar + saha mühendisinin yarın planı
+ *   05 Sahadaki Kaynaklar — firma bazında personel / makine (düne göre)
+ *   06 Saha Notları — özet, sorunlar / engeller
+ *   07 Saha Fotoğrafları
+ *   08 Onay — Saha Mühendisi · Şantiye Şefi · İşveren Temsilcisi
  */
 
-import { formatDate, formatNumber, toISODate, daysBetween } from "@/lib/utils";
-import type { Project, DailyReport, PersonnelAttendance, MachineAttendance, WbsItem } from "@/lib/store/types";
+import { formatDate, formatNumber, toISODate, addDays, daysBetween, spiLevel } from "@/lib/utils";
+import type {
+  Project,
+  DailyReport,
+  PersonnelAttendance,
+  MachineAttendance,
+  WbsItem,
+  LookaheadItem,
+  ProcurementItem,
+  PersonnelMaster,
+  MachineMaster,
+} from "@/lib/store/types";
 import { loadingOverlay } from "@/lib/ui-loading";
-import { sumByDateMap } from "@/lib/calc/progress";
-import { resolvePhotoUrls } from "@/lib/data/photo-store";
+import { computeProgress, sumByDateMap } from "@/lib/calc/progress";
+import { procurementFollowup } from "@/lib/calc/sections";
+import { resolvePhotoUrl } from "@/lib/data/photo-store";
+import {
+  type RGB,
+  NAVY_DEEP,
+  NAVY,
+  MUTED,
+  GOOD,
+  WARN,
+  BAD,
+  WHITE,
+  PW,
+  ML,
+  MR,
+  CW,
+  TOP,
+  KIND_LABEL,
+  pct1,
+  qty,
+  spiTxt,
+  cap,
+  signed,
+  coverImage,
+  createPdfDoc,
+  createKit,
+} from "@/lib/pdf/kit";
 
 export interface DCRInput {
   project: Project;
   report: DailyReport | undefined; // boş gün için de PDF üretilebilir
   date: string;
-  /** O günün puantaj kayıtları (sadece o tarihte) */
   personnelAttendance: PersonnelAttendance[];
   machineAttendance: MachineAttendance[];
-  /** Proje WBS — gerçekleşmiş aktivite isimleri için lookup */
+  /** Proje WBS — aktivite isimleri / miktarları */
   wbs: WbsItem[];
-  /** Realized data — wbs code → date → qty */
+  /** Gerçekleşen — wbs code → date → qty */
   realized: Record<string, Record<string, number>>;
-  /** Planlanan data — wbs code → date → qty (bugüne kadar plan için) */
+  /** Planlanan — wbs code → date → qty */
   planned?: Record<string, Record<string, number>>;
-  /** Hazırlayan adı (saha mühendisi) — boş ise "Saha Mühendisi" yazılır */
+  /** Kritik işler / tutanak / claim kayıtları */
+  lookahead?: LookaheadItem[];
+  procurement?: ProcurementItem[];
+  personnel?: PersonnelMaster[];
+  machines?: MachineMaster[];
+  /** Hazırlayan (saha mühendisi) */
   preparedBy?: string;
+  panelName?: string;
 }
 
-function escapeHtml(s: unknown): string {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+const COVER_SUB: RGB = [183, 196, 222];
+const COVER_LABEL: RGB = [143, 163, 201];
 
 export async function downloadDCRPDF(input: DCRInput): Promise<void> {
   loadingOverlay.start("DCR raporu hazırlanıyor");
   try {
-    return await _renderDCR(input);
+    return await renderDCR(input);
   } finally {
     loadingOverlay.stop();
   }
 }
 
-async function _renderDCR(input: DCRInput): Promise<void> {
-  const { project, report, date, personnelAttendance, machineAttendance, wbs, realized, planned = {}, preparedBy } = input;
-  const today = formatDate(toISODate(new Date()));
-  const A4_PX_W = 794;
+type Action = { level: "bad" | "warn"; kind: string; subject: string; detail: string; owner: string; due: string };
 
-  // ─── Geist font (Türkçe destek) ───
-  const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-  if (!fontResp.ok) throw new Error("Geist fontu yüklenemedi");
-  const fontBuf = await fontResp.arrayBuffer();
-  const fontB64 = (() => {
-    const bytes = new Uint8Array(fontBuf);
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-    }
-    return btoa(binary);
-  })();
+async function renderDCR(input: DCRInput): Promise<void> {
+  const {
+    project,
+    report,
+    date,
+    personnelAttendance,
+    machineAttendance,
+    wbs,
+    realized,
+    planned = {},
+    lookahead = [],
+    procurement = [],
+    personnel = [],
+    machines = [],
+    preparedBy,
+    panelName,
+  } = input;
+  const brand = panelName ?? "Proje Yönetim Platformu";
+  const yesterday = toISODate(addDays(date, -1));
+  const tomorrow = toISODate(addDays(date, 1));
 
-  // ─── Veri hazırlığı ───
-  // Personel sayım
-  const personPresent = personnelAttendance.filter((a) => a.date === date && a.projectId === project.id && a.present);
-  const personnelCount = new Set(personPresent.map((a) => a.personnelMasterId)).size;
-  const totalManhours = personPresent.reduce((s, a) => s + (a.hours || 0), 0);
-
-  // Makine sayım
-  const machinePresent = machineAttendance.filter((a) => a.date === date && a.projectId === project.id && a.present);
-  const machineCount = new Set(machinePresent.map((a) => a.machineMasterId)).size;
-  const machineHours = machinePresent.reduce((s, a) => s + (a.hours || 0), 0);
-
-  // O gün gerçekleşen WBS aktiviteleri
-  const realizedToday: Array<{
-    code: string;
-    name: string;
-    qty: number;
-    unit: string;
-    total: number;
-    planCum: number;
-    cumQty: number;
-    remaining: number;
-    cumPct: number;
-    planPct: number;
-  }> = [];
-  for (const w of wbs) {
-    if (!w.isLeaf || w.deletedAt) continue;
-    const qty = realized[w.code]?.[date];
-    if (qty == null || qty <= 0) continue;
-    const cumQty = sumByDateMap(realized, w.code, date);
-    const total = w.quantity || 0;
-    const planCum = sumByDateMap(planned, w.code, date);
-    const cumPct = total > 0 ? Math.min(100, (cumQty / total) * 100) : 0;
-    const planPct = total > 0 ? Math.min(100, (planCum / total) * 100) : 0;
-    realizedToday.push({
-      code: w.code,
-      name: w.name,
-      qty,
-      unit: w.unit || "",
-      total,
-      planCum,
-      cumQty,
-      remaining: Math.max(0, total - cumQty),
-      cumPct,
-      planPct,
-    });
-  }
-  realizedToday.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-
-  // Proje gün numarası
+  // ════════════════════════════════════════════════════════════════════
+  // HESAPLAMALAR
+  // ════════════════════════════════════════════════════════════════════
   const dayNo = daysBetween(project.startDate, date) + 1;
 
-  // ─── HTML body ───
+  // Kaynaklar
+  const pAtt = (d: string) => personnelAttendance.filter((a) => a.projectId === project.id && a.date === d && a.present);
+  const mAtt = (d: string) => machineAttendance.filter((a) => a.projectId === project.id && a.date === d && a.present);
+  const pToday = pAtt(date);
+  const pYest = pAtt(yesterday);
+  const mToday = mAtt(date);
+  const mYest = mAtt(yesterday);
+  const personnelCount = new Set(pToday.map((a) => a.personnelMasterId)).size;
+  const personnelYest = new Set(pYest.map((a) => a.personnelMasterId)).size;
+  const manhours = pToday.reduce((s, a) => s + (a.hours || 0), 0);
+  const machineCount = new Set(mToday.map((a) => a.machineMasterId)).size;
+  const machineYest = new Set(mYest.map((a) => a.machineMasterId)).size;
+  const machineHours = mToday.reduce((s, a) => s + (a.hours || 0), 0);
+
+  const personById = new Map(personnel.map((p) => [p.id, p]));
+  const machineById = new Map(machines.map((m) => [m.id, m]));
+  const byCompany = new Map<string, { today: number; hours: number; yest: number }>();
+  for (const a of pToday) {
+    const c = personById.get(a.personnelMasterId)?.company ?? "Diğer";
+    const r = byCompany.get(c) ?? { today: 0, hours: 0, yest: 0 };
+    r.today++;
+    r.hours += a.hours || 0;
+    byCompany.set(c, r);
+  }
+  for (const a of pYest) {
+    const c = personById.get(a.personnelMasterId)?.company ?? "Diğer";
+    const r = byCompany.get(c) ?? { today: 0, hours: 0, yest: 0 };
+    r.yest++;
+    byCompany.set(c, r);
+  }
+  const machineRows = new Map<string, { company: string; type: string; count: number; hours: number }>();
+  for (const a of mToday) {
+    const m = machineById.get(a.machineMasterId);
+    const key = `${m?.company ?? "Diğer"}|${m?.machineType ?? "—"}`;
+    const r = machineRows.get(key) ?? { company: m?.company ?? "Diğer", type: m?.machineType ?? "—", count: 0, hours: 0 };
+    r.count++;
+    r.hours += a.hours || 0;
+    machineRows.set(key, r);
+  }
+
+  // İlerleme
+  const leafs = wbs.filter((w) => w.isLeaf && !w.deletedAt);
+  const wbsItems = wbs.map((w) => ({ code: w.code, isLeaf: w.isLeaf, quantity: w.quantity, weight: w.weight }));
+  const { planPct, realPct, spi } = computeProgress(wbsItems, planned, realized, date);
+  const planP = planPct * 100;
+  const realP = realPct * 100;
+  const lvl = spiLevel(spi);
+  const spiTone: RGB | undefined = lvl === "good" ? GOOD : lvl === "warn" ? WARN : lvl === "bad" ? BAD : undefined;
+
+  type ActRow = { code: string; name: string; unit: string; today: number; total: number; planCum: number; cum: number };
+  const rowFor = (w: WbsItem): ActRow => ({
+    code: w.code,
+    name: w.name,
+    unit: w.unit || "",
+    today: Number(realized[w.code]?.[date]) || 0,
+    total: w.quantity || 0,
+    planCum: sumByDateMap(planned, w.code, date),
+    cum: sumByDateMap(realized, w.code, date),
+  });
+  const byCode = (a: { code: string }, b: { code: string }) => a.code.localeCompare(b.code, undefined, { numeric: true });
+
+  const doneToday = leafs.filter((w) => (Number(realized[w.code]?.[date]) || 0) > 0).map(rowFor).sort(byCode);
+
+  // Plan gerisi: bugüne kadar planı olan, gerçekleşmesi planın %90'ının altında kalan kalemler
+  const behind = leafs
+    .map(rowFor)
+    .filter((r) => r.planCum > 0 && r.cum < r.planCum * 0.9 && r.cum < r.total)
+    .map((r) => ({ ...r, ratio: r.cum / r.planCum }))
+    .sort((a, b) => a.ratio - b.ratio);
+
+  // Bugün planlanıp gerçekleşme girilmeyen
+  const plannedNotDone = leafs
+    .filter((w) => (Number(planned[w.code]?.[date]) || 0) > 0 && !((Number(realized[w.code]?.[date]) || 0) > 0))
+    .map((w) => ({ w, plan: Number(planned[w.code]?.[date]) || 0 }));
+
+  // Yarın planlanan
+  const tomorrowRows = leafs
+    .filter((w) => (Number(planned[w.code]?.[tomorrow]) || 0) > 0)
+    .map((w) => ({
+      ...rowFor(w),
+      tomorrowPlan: Number(planned[w.code]?.[tomorrow]) || 0,
+      planCumTomorrow: sumByDateMap(planned, w.code, tomorrow),
+    }))
+    .sort(byCode);
+
+  // ─── Aksiyon listesi ───
+  const actions: Action[] = [];
+  if (report?.workStopped) {
+    actions.push({
+      level: "bad",
+      kind: "İş Durdu",
+      subject: "Sahada çalışma durdu",
+      detail: report.workStoppedReason || "Sebep belirtilmedi",
+      owner: "—",
+      due: formatDate(date),
+    });
+  }
+  const openLook = lookahead.filter((l) => l.projectId === project.id && !l.done);
+  const in3 = toISODate(addDays(date, 3));
+  for (const l of openLook.filter((x) => x.date <= in3).sort((a, b) => a.date.localeCompare(b.date))) {
+    const d = daysBetween(date, l.date);
+    actions.push({
+      level: d < 0 || l.priority === "critical" ? "bad" : "warn",
+      kind: KIND_LABEL[l.kind ?? "kritik_is"] ?? "Kritik İş",
+      subject: l.task,
+      detail: d < 0 ? `Termin ${-d} gün geçti` : d === 0 ? "Termin bugün" : `Termine ${d} gün kaldı`,
+      owner: l.owner ?? "—",
+      due: formatDate(l.date),
+    });
+  }
+  const projProc = procurement.filter((p) => p.projectId === project.id);
+  for (const f of procurementFollowup(projProc, date)) {
+    const m = f.nextMilestone;
+    if (!m || m.isCompleted || m.daysFromToday == null) continue;
+    if (m.isOverdue) {
+      actions.push({
+        level: "bad",
+        kind: "Tedarik",
+        subject: f.item.material,
+        detail: `${m.label} ${-m.daysFromToday} gün gecikti`,
+        owner: f.item.supplier ?? "—",
+        due: m.plannedDate ? formatDate(m.plannedDate) : "—",
+      });
+    } else if (m.daysFromToday <= 7) {
+      actions.push({
+        level: "warn",
+        kind: "Tedarik",
+        subject: f.item.material,
+        detail: m.daysFromToday === 0 ? `${m.label} bugün` : `${m.label} için ${m.daysFromToday} gün kaldı`,
+        owner: f.item.supplier ?? "—",
+        due: m.plannedDate ? formatDate(m.plannedDate) : "—",
+      });
+    }
+  }
+  for (const b of behind.slice(0, 6)) {
+    actions.push({
+      level: b.ratio < 0.75 ? "bad" : "warn",
+      kind: "Plan Gerisi",
+      subject: b.name,
+      detail: `Planın %${formatNumber(b.ratio * 100, 0)} kadarı gerçekleşti · ${qty(b.planCum - b.cum)} ${b.unit} eksik`,
+      owner: "—",
+      due: "—",
+    });
+  }
+  for (const p of plannedNotDone.slice(0, 6)) {
+    actions.push({
+      level: "warn",
+      kind: "Gerçekleşme Yok",
+      subject: p.w.name,
+      detail: `Bugün ${qty(p.plan)} ${p.w.unit} planlanmıştı, gerçekleşme girilmedi`,
+      owner: "—",
+      due: formatDate(date),
+    });
+  }
+  if (personnelYest > 0 && personnelCount < personnelYest * 0.8) {
+    actions.push({
+      level: "warn",
+      kind: "Kaynak",
+      subject: "Sahadaki personel azaldı",
+      detail: `Dün ${personnelYest} kişi, bugün ${personnelCount} kişi (%${formatNumber(((personnelYest - personnelCount) / personnelYest) * 100, 0)} düşüş)`,
+      owner: "—",
+      due: formatDate(date),
+    });
+  }
+  actions.sort((a, b) => (a.level === b.level ? 0 : a.level === "bad" ? -1 : 1));
+  const badCount = actions.filter((a) => a.level === "bad").length;
+
+  // Fotoğraflar
+  const photos: { data: string; caption: string }[] = [];
+  for (const [i, p] of (report?.photos ?? []).slice(0, 6).entries()) {
+    const data = await coverImage(await resolvePhotoUrl(p.url), 85, 57);
+    if (data) photos.push({ data, caption: p.caption || `Fotoğraf ${i + 1}` });
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // PDF
+  // ════════════════════════════════════════════════════════════════════
+  const { doc, autoTable } = await createPdfDoc();
+  doc.setProperties({
+    title: `${project.name} — Günlük Saha Raporu — ${formatDate(date)}`,
+    subject: "Günlük Saha Raporu (DCR)",
+    author: preparedBy ?? brand,
+    creator: brand,
+  });
+  let y = TOP;
+  const K = createKit(doc, autoTable, { get: () => y, set: (v) => (y = v) });
+  const { font, fill, h2, h3, paragraph, kpis, table, emptyNote, callout } = K;
+
+  // ─── Antet (1. sayfa) ───
+  const BAND = 44;
+  fill(NAVY_DEEP);
+  doc.rect(0, 0, PW, BAND, "F");
+  fill(NAVY);
+  doc.rect(0, BAND - 1.6, PW, 1.6, "F");
+  font("bold", 7.5, COVER_LABEL);
+  doc.text("GÜNLÜK SAHA RAPORU  ·  DCR", ML, 13, { charSpace: 0.7 });
+  font("normal", 7.5, COVER_LABEL);
+  doc.text(`Rapor No: DCR-${date.replace(/-/g, "")}`, PW - MR, 13, { align: "right" });
+  font("bold", 18, WHITE);
+  doc.text(doc.splitTextToSize(project.name, CW - 50)[0] as string, ML, 23.5);
+  font("bold", 15, WHITE);
+  doc.text(formatDate(date), PW - MR, 23.5, { align: "right" });
+  font("normal", 8.5, COVER_SUB);
+  const parties = [
+    project.location,
+    project.mainContractorName ? `Yüklenici: ${project.mainContractorName}` : "",
+    project.investorName ? `İşveren: ${project.investorName}` : "",
+  ]
+    .filter(Boolean)
+    .join("   ·   ");
+  doc.text(doc.splitTextToSize(parties, CW - 50)[0] as string, ML, 30.5);
+  doc.text(`Proje günü ${dayNo} / ${project.durationDays}`, PW - MR, 30.5, { align: "right" });
   const tempPart =
     report?.temperatureMin != null && report?.temperatureMax != null
-      ? `${report.temperatureMin}°C – ${report.temperatureMax}°C`
+      ? `${report.temperatureMin}–${report.temperatureMax} °C`
       : report?.temperatureMin != null
-        ? `min ${report.temperatureMin}°C`
+        ? `min ${report.temperatureMin} °C`
         : report?.temperatureMax != null
-          ? `maks ${report.temperatureMax}°C`
+          ? `maks ${report.temperatureMax} °C`
           : "";
-  const weatherLine = [report?.weather, tempPart, report?.wind].filter(Boolean).join(" · ") || "Bilgi yok";
+  const weatherLine = [report?.weather, tempPart, report?.wind].filter(Boolean).join("  ·  ") || "Hava durumu girilmedi";
+  font("bold", 7, COVER_LABEL);
+  doc.text("HAVA", ML, 38.5, { charSpace: 0.5 });
+  font("normal", 8.5, WHITE);
+  doc.text(weatherLine, ML + 10, 38.5);
+  y = BAND + 6;
 
-  // Fotoğraflar IndexedDB referansı ("idb:...") olarak saklanır — görüntülenebilir url'e çevir
-  const photoUrls = report?.photos?.length
-    ? (await resolvePhotoUrls(report.photos.map((p) => p.url))).filter(Boolean)
-    : [];
-
-  const realizedRows = realizedToday.length === 0
-    ? `<tr><td colspan="10" style="padding:14px; text-align:center; color:#94a3b8; border:1px solid #e5e7eb;">Bu gün için kayıtlı gerçekleşme yok.</td></tr>`
-    : realizedToday.map((r) => {
-      const dev = r.cumQty - r.planCum; // + önde, − geride
-      const devColor = Math.abs(dev) < 1e-9 ? "#475569" : dev > 0 ? "#047857" : "#b91c1c";
-      return `
-      <tr>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:9px; color:#475569; font-weight:700;">${escapeHtml(r.code)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-size:10.5px;">${escapeHtml(r.name)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; font-size:10px; color:#64748b;">${escapeHtml(r.unit)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:#0f172a;">${formatNumber(r.total, 1)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:#047857;">${formatNumber(r.qty, 1)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:#1d4ed8;">${formatNumber(r.planCum, 1)}<div style="font-size:8.5px; color:#64748b;">%${r.planPct.toFixed(1)}</div></td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:#0f172a;">${formatNumber(r.cumQty, 1)}<div style="font-size:8.5px; color:#64748b;">%${r.cumPct.toFixed(1)}</div></td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; color:${r.remaining <= 0 ? "#047857" : "#0f172a"};">${formatNumber(r.remaining, 1)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:${devColor};">${dev > 0 ? "+" : ""}${formatNumber(dev, 1)}</td>
-        <td style="padding:5px 6px; border:1px solid #e5e7eb; text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px; font-weight:700; color:${r.planCum > 0 ? (r.cumQty >= r.planCum ? "#047857" : "#b91c1c") : "#475569"};">${r.planCum > 0 ? "%" + ((r.cumQty / r.planCum) * 100).toFixed(0) : "—"}</td>
-      </tr>
-    `;
-    }).join("");
-
-  const photosHtml = photoUrls.length > 0
-    ? `<div style="margin-top:14px;">
-         <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:6px;">SAHA FOTOĞRAFLARI (${photoUrls.length})</div>
-         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
-           ${photoUrls.slice(0, 8).map((url) => `
-             <img src="${escapeHtml(url)}" style="width:100%; aspect-ratio:1.4; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
-           `).join("")}
-         </div>
-       </div>`
-    : "";
-
-  const workStoppedBlock = report?.workStopped
-    ? `<div style="margin-top:10px; padding:8px 12px; background:#fee2e2; border-left:4px solid #b91c1c; border-radius:4px; font-size:11px; color:#7f1d1d;">
-         <strong>⚠ İŞ DURDU:</strong> ${escapeHtml(report.workStoppedReason || "Sebep belirtilmedi")}
-       </div>`
-    : "";
-
-  const bodyHtml = `
-    <div style="padding:8px;">
-      <!-- PROJE BİLGİ BLOK -->
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; margin-bottom:14px;">
-        <div style="padding:8px 12px; background:#f8fafc; border-right:1px solid #e2e8f0;">
-          <div style="font-size:8.5px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">PROJE</div>
-          <div style="font-size:12px; font-weight:800; color:#0f172a; margin-top:2px;">${escapeHtml(project.name)}</div>
-          <div style="font-size:10px; color:#475569; margin-top:1px;">${escapeHtml(project.location)}</div>
-        </div>
-        <div style="padding:8px 12px; background:#f8fafc; border-right:1px solid #e2e8f0;">
-          <div style="font-size:8.5px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">RAPOR TARİHİ</div>
-          <div style="font-size:14px; font-weight:800; color:#047857; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${formatDate(date)}</div>
-          <div style="font-size:10px; color:#475569; margin-top:1px;">Gün ${dayNo} / ${project.durationDays}</div>
-        </div>
-        <div style="padding:8px 12px; background:#f8fafc;">
-          <div style="font-size:8.5px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">HAVA DURUMU</div>
-          <div style="font-size:11px; font-weight:700; color:#0f172a; margin-top:2px;">${escapeHtml(weatherLine)}</div>
-        </div>
-      </div>
-
-      ${workStoppedBlock}
-
-      <!-- KAYNAK ÖZETİ -->
-      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:${workStoppedBlock ? "10px" : "0"};">
-        <div style="padding:10px 12px; background:#f0fdf4; border:1px solid #86efac; border-radius:6px; text-align:center;">
-          <div style="font-size:8.5px; color:#047857; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">PERSONEL</div>
-          <div style="font-size:22px; font-weight:900; color:#047857; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${personnelCount}</div>
-          <div style="font-size:9.5px; color:#475569; margin-top:1px;">${formatNumber(totalManhours, 0)} adam-saat</div>
-        </div>
-        <div style="padding:10px 12px; background:#fef3c7; border:1px solid #fcd34d; border-radius:6px; text-align:center;">
-          <div style="font-size:8.5px; color:#b45309; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">MAKİNE</div>
-          <div style="font-size:22px; font-weight:900; color:#b45309; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${machineCount}</div>
-          <div style="font-size:9.5px; color:#475569; margin-top:1px;">${formatNumber(machineHours, 0)} makine-saat</div>
-        </div>
-        <div style="padding:10px 12px; background:#dbeafe; border:1px solid #93c5fd; border-radius:6px; text-align:center;">
-          <div style="font-size:8.5px; color:#1d4ed8; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">AKTİVİTE</div>
-          <div style="font-size:22px; font-weight:900; color:#1d4ed8; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${realizedToday.length}</div>
-          <div style="font-size:9.5px; color:#475569; margin-top:1px;">kalem ilerledi</div>
-        </div>
-        <div style="padding:10px 12px; background:#f3e8ff; border:1px solid #d8b4fe; border-radius:6px; text-align:center;">
-          <div style="font-size:8.5px; color:#7c3aed; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">FOTOĞRAF</div>
-          <div style="font-size:22px; font-weight:900; color:#7c3aed; margin-top:2px; font-family:'JetBrains Mono',ui-monospace,monospace;">${photoUrls.length}</div>
-          <div style="font-size:9.5px; color:#475569; margin-top:1px;">adet eklendi</div>
-        </div>
-      </div>
-
-      <!-- GERÇEKLEŞEN AKTİVİTELER TABLOSU -->
-      <div style="margin-top:14px;">
-        <div style="background:linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
-          Gerçekleşen Aktiviteler — Bu Gün ve Bugüne Kadar
-        </div>
-        <table style="width:100%; border-collapse:collapse; border:1px solid #e5e7eb; border-top:none;">
-          <thead>
-            <tr style="background:#f8fafc;">
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">WBS</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Kalem</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:left; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Birim</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Toplam</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Bu Gün</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Plan<br>(Bugüne Kadar)</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Gerçekleşen<br>(Bugüne Kadar)</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Kalan</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Sapma</th>
-              <th style="padding:6px 6px; border:1px solid #e5e7eb; text-align:right; font-size:8.5px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.3px;">Gerç. /<br>Plan</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${realizedRows}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- NOTLAR -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">
-        <div>
-          <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">SAHA NOTU / ÖZET</div>
-          <div style="min-height:60px; padding:8px 10px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:4px; font-size:11px; color:#334155; white-space:pre-wrap; line-height:1.5;">${escapeHtml(report?.summary || "—")}</div>
-        </div>
-        <div>
-          <div style="font-size:10px; font-weight:800; color:#b91c1c; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">⚠ SORUNLAR / ENGELLER</div>
-          <div style="min-height:60px; padding:8px 10px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; font-size:11px; color:#7f1d1d; white-space:pre-wrap; line-height:1.5;">${escapeHtml(report?.issues || "—")}</div>
-        </div>
-      </div>
-
-      <div style="margin-top:10px;">
-        <div style="font-size:10px; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">→ YARIN İÇİN PLAN</div>
-        <div style="min-height:40px; padding:8px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; font-size:11px; color:#0c4a6e; white-space:pre-wrap; line-height:1.5;">${escapeHtml(report?.tomorrowPlan || "—")}</div>
-      </div>
-
-      ${photosHtml}
-
-      <!-- İMZA ALANI -->
-      <div style="margin-top:18px;">
-        <div style="background:linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
-          İmzalar
-        </div>
-        <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none;">
-          <tbody>
-            <tr>
-              <td style="padding:14px 14px; border:1px solid #e2e8f0; vertical-align:top; width:50%;">
-                <div style="font-size:9px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">SAHA MÜHENDİSİ</div>
-                <div style="font-size:11px; font-weight:700; color:#0f172a; min-height:14px;">${escapeHtml(preparedBy ?? "")}</div>
-                <div style="margin-top:6px; font-size:8.5px; color:#71717a;">Tarih: ${escapeHtml(formatDate(date))}</div>
-                <div style="margin-top:24px; border-bottom:1px solid #94a3b8;"></div>
-                <div style="font-size:8px; color:#94a3b8; text-align:center; margin-top:3px; font-style:italic;">İmza</div>
-              </td>
-              <td style="padding:14px 14px; border:1px solid #e2e8f0; vertical-align:top; width:50%;">
-                <div style="font-size:9px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">İŞVEREN TEMSİLCİSİ</div>
-                <div style="font-size:11px; font-weight:700; color:#0f172a; min-height:14px;">${escapeHtml(project.investorName ?? "")}</div>
-                <div style="margin-top:6px; font-size:8.5px; color:#71717a;">Tarih: ___ / ___ / ${date.slice(0, 4)}</div>
-                <div style="margin-top:24px; border-bottom:1px solid #94a3b8;"></div>
-                <div style="font-size:8px; color:#94a3b8; text-align:center; margin-top:3px; font-style:italic;">İmza</div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  // ─── Render container ───
-  const root = document.createElement("div");
-  root.style.cssText = `
-    position: fixed; left: -10000px; top: 0;
-    width: ${A4_PX_W}px; background: #ffffff; color: #0a0a0a;
-    font-family: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
-    font-size: 11px; line-height: 1.4; padding: 0;
-  `;
-  root.innerHTML = bodyHtml;
-  document.body.appendChild(root);
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  try {
-    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-      import("jspdf"),
-      import("html2canvas-pro"),
-    ]);
-
-    const canvas = await html2canvas(root, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      logging: false,
-      windowWidth: A4_PX_W,
-    });
-
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-    pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-    pdf.addFont("Geist-Regular.ttf", "Geist", "bold");
-    pdf.setFont("Geist", "normal");
-
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const marginX = 8;
-    const headerH = 22;
-    const footerH = 8;
-    const bodyTop = headerH + 2;
-    const bodyBottom = pageH - footerH - 2;
-    const bodyMaxH = bodyBottom - bodyTop;
-    const contentW = pageW - marginX * 2;
-    const pxPerMm = canvas.width / contentW;
-    const bodyMaxHpx = bodyMaxH * pxPerMm;
-
-    // Tek sayfada bitmesi için body ölçeklendirme — DCR tek sayfa kuralı
-    let yOffset = 0;
-    let pageNo = 0;
-    while (yOffset < canvas.height) {
-      const sliceH = Math.min(bodyMaxHpx, canvas.height - yOffset);
-      if (sliceH <= 0) break;
-      const slice = document.createElement("canvas");
-      slice.width = canvas.width;
-      slice.height = sliceH;
-      const sctx = slice.getContext("2d");
-      if (!sctx) break;
-      sctx.fillStyle = "#ffffff";
-      sctx.fillRect(0, 0, slice.width, slice.height);
-      sctx.drawImage(canvas, 0, -yOffset);
-      const imgData = slice.toDataURL("image/png");
-
-      if (pageNo > 0) pdf.addPage();
-      const imgMmH = sliceH / pxPerMm;
-      pdf.addImage(imgData, "PNG", marginX, bodyTop, contentW, imgMmH);
-
-      sctx.clearRect(0, 0, slice.width, slice.height);
-      slice.width = 0;
-      slice.height = 0;
-
-      yOffset += sliceH;
-      pageNo++;
-      if (pageNo > 5) break;
-    }
-
-    // ─── Her sayfaya emerald brand header + footer ───
-    const totalPages = pdf.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      pdf.setPage(i);
-
-      // Header gradient strip
-      const strips = 200;
-      const stripW = pageW / strips;
-      const from: [number, number, number] = [4, 120, 87];
-      const to: [number, number, number] = [16, 185, 129];
-      for (let s = 0; s < strips; s++) {
-        const t = s / (strips - 1);
-        const r = Math.round(from[0] + (to[0] - from[0]) * t);
-        const g = Math.round(from[1] + (to[1] - from[1]) * t);
-        const b = Math.round(from[2] + (to[2] - from[2]) * t);
-        pdf.setFillColor(r, g, b);
-        pdf.rect(s * stripW, 0, stripW + 0.2, headerH, "F");
-      }
-
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(7);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("GÜNLÜK SAHA RAPORU", marginX, 6);
-
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(13);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(`DCR · ${project.name}`, marginX, 13);
-
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`Rapor: ${formatDate(date)}  ·  Gün ${dayNo}/${project.durationDays}`, marginX, 18.5);
-
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(8.5);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(today, pageW - marginX, 9, { align: "right" });
-
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(167, 243, 208);
-      pdf.text(`Sayfa ${i}/${totalPages}`, pageW - marginX, 14, { align: "right" });
-
-      // Footer
-      pdf.setDrawColor(220, 220, 230);
-      pdf.setLineWidth(0.2);
-      pdf.line(marginX, pageH - footerH + 2, pageW - marginX, pageH - footerH + 2);
-
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(140, 140, 140);
-      pdf.text(`${project.name}  ·  Saha Günlük Raporu (DCR)`, marginX, pageH - 3);
-      pdf.text(`${formatDate(date)}  ·  ${today}`, pageW - marginX, pageH - 3, { align: "right" });
-    }
-
-    // ─── İndir ───
-    const safeName = project.name.replace(/[^\w\s\-_.]/g, "").replace(/\s+/g, "-").slice(0, 50);
-    const dateStamp = date.replace(/-/g, "");
-    pdf.save(`${safeName}-DCR-${dateStamp}.pdf`);
-  } finally {
-    document.body.removeChild(root);
+  if (report?.workStopped) {
+    callout("İŞ DURDU", report.workStoppedReason || "Sebep belirtilmedi", BAD);
   }
+
+  // ─── Günün göstergeleri ───
+  const diff = (a: number, b: number) => (b === 0 && a === 0 ? "dün: —" : `dün ${b} · ${signed(a - b, 0)}`);
+  kpis([
+    { label: "Sahadaki Personel", value: String(personnelCount), sub: diff(personnelCount, personnelYest) },
+    { label: "Adam-Saat", value: formatNumber(manhours, 0), sub: "bugün" },
+    { label: "Sahadaki Makine", value: String(machineCount), sub: diff(machineCount, machineYest) },
+    { label: "Makine-Saat", value: formatNumber(machineHours, 0), sub: "bugün" },
+    { label: "İmalat Girilen Kalem", value: String(doneToday.length), sub: `${plannedNotDone.length} planlı kalem girilmedi` },
+    { label: "Genel İlerleme", value: pct1(realP), sub: `plan ${pct1(planP)} · ${signed(realP - planP)} puan`, tone: spiTone },
+    { label: "SPI", value: spiTxt(spi), sub: "≥ 0,95 sağlıklı", tone: spiTone },
+    {
+      label: "Aksiyon Gerektiren",
+      value: String(actions.length),
+      sub: `${badCount} acil`,
+      tone: badCount > 0 ? BAD : actions.length ? WARN : GOOD,
+    },
+  ]);
+
+  // 01 — Aksiyon
+  h2("Aksiyon Gerektiren Konular", 25);
+  if (actions.length === 0) {
+    emptyNote("Bugün için aksiyon gerektiren konu bulunmuyor.");
+  } else {
+    table(
+      ["Durum", "Tür", "Konu", "Açıklama", "Sorumlu", "Termin"],
+      actions.map((a) => [a.level === "bad" ? "Acil" : "Takip", a.kind, a.subject, a.detail, a.owner, a.due]),
+      {
+        align: ["left", "left", "left", "left", "left", "right"],
+        widths: [13, 24, 44, "auto", 26, 20],
+        fontSize: 7.8,
+        tone: (r, c) => (c === 0 ? (actions[r].level === "bad" ? BAD : WARN) : undefined),
+      }
+    );
+  }
+
+  // 02 — Bugün gerçekleşen
+  h2("Bugün Gerçekleşen İmalatlar", 25);
+  if (doneToday.length === 0) {
+    emptyNote("Bu gün için gerçekleşme kaydı girilmedi.");
+  } else {
+    table(
+      ["WBS", "İş Kalemi", "Birim", "Bu Gün", "Plan (bugüne k.)", "Gerçek. (bugüne k.)", "Toplam", "Kalan", "Gerç./Plan"],
+      doneToday.map((r) => [
+        r.code,
+        r.name,
+        r.unit,
+        qty(r.today),
+        qty(r.planCum),
+        `${qty(r.cum)}  (%${formatNumber(r.total > 0 ? (r.cum / r.total) * 100 : 0, 0)})`,
+        qty(r.total),
+        qty(Math.max(0, r.total - r.cum)),
+        r.planCum > 0 ? `%${formatNumber((r.cum / r.planCum) * 100, 0)}` : "—",
+      ]),
+      {
+        align: ["left", "left", "left", "right", "right", "right", "right", "right", "right"],
+        widths: [14, "auto", 11, 14, 18, 24, 15, 14, 17],
+        fontSize: 7.6,
+        bold: [3],
+        tone: (r, c) => {
+          const x = doneToday[r];
+          if (c === 3) return GOOD;
+          if (c === 8 && x.planCum > 0) return x.cum >= x.planCum ? GOOD : x.cum >= x.planCum * 0.9 ? WARN : BAD;
+          return undefined;
+        },
+      }
+    );
+  }
+
+  // 03 — Plan gerisi
+  h2("Plan Gerisindeki Kalemler", 25);
+  paragraph(
+    "Rapor tarihine kadar planlanan miktarın %90'ının altında gerçekleşen kalemler (en geride olandan başlayarak).",
+    8.5,
+    MUTED
+  );
+  y += 1;
+  if (behind.length === 0) {
+    emptyNote("Plan gerisinde kalan kalem yok.");
+  } else {
+    table(
+      ["WBS", "İş Kalemi", "Birim", "Plan (bugüne k.)", "Gerçek. (bugüne k.)", "Eksik", "Gerç./Plan"],
+      behind.slice(0, 15).map((r) => [
+        r.code,
+        r.name,
+        r.unit,
+        qty(r.planCum),
+        qty(r.cum),
+        qty(r.planCum - r.cum),
+        `%${formatNumber(r.ratio * 100, 0)}`,
+      ]),
+      {
+        align: ["left", "left", "left", "right", "right", "right", "right"],
+        widths: [15, "auto", 12, 24, 26, 18, 18],
+        tone: (r, c) => (c === 5 || c === 6 ? (behind[r].ratio < 0.75 ? BAD : WARN) : undefined),
+      }
+    );
+    if (behind.length > 15) paragraph(`… ve ${behind.length - 15} kalem daha.`, 8, MUTED);
+  }
+
+  // 04 — Yarın
+  h2("Yarın Planlanan İmalatlar", 25);
+  if (tomorrowRows.length === 0) {
+    emptyNote(`${formatDate(tomorrow)} için planlanmış imalat bulunmuyor.`);
+  } else {
+    table(
+      ["WBS", "İş Kalemi", "Birim", "Yarın Plan", "Plan Kümül. (yarın)", "Gerçek. (bugüne k.)", "Kalan"],
+      tomorrowRows.map((r) => [
+        r.code,
+        r.name,
+        r.unit,
+        qty(r.tomorrowPlan),
+        qty(r.planCumTomorrow),
+        qty(r.cum),
+        qty(Math.max(0, r.total - r.cum)),
+      ]),
+      {
+        align: ["left", "left", "left", "right", "right", "right", "right"],
+        widths: [15, "auto", 12, 18, 26, 26, 18],
+        bold: [3],
+      }
+    );
+  }
+  if (report?.tomorrowPlan?.trim()) {
+    h3("Saha Mühendisinin Yarın Planı", 10);
+    paragraph(report.tomorrowPlan.trim());
+    y += 2;
+  }
+
+  // 05 — Kaynaklar
+  h2("Sahadaki Kaynaklar", 25);
+  if (byCompany.size === 0) {
+    emptyNote("Bu gün için puantaj kaydı yok.");
+  } else {
+    const rows = Array.from(byCompany.entries()).sort((a, b) => b[1].today - a[1].today);
+    const bold = (t: string) => ({ content: t, styles: { fontStyle: "bold" } });
+    table(
+      ["Firma", "Bugün (kişi)", "Adam-Saat", "Dün (kişi)", "Fark"],
+      [
+        ...rows.map(([c, r]) => [c, String(r.today), formatNumber(r.hours, 0), String(r.yest), signed(r.today - r.yest, 0)]),
+        [
+          bold("Toplam"),
+          bold(String(personnelCount)),
+          bold(formatNumber(manhours, 0)),
+          bold(String(personnelYest)),
+          bold(signed(personnelCount - personnelYest, 0)),
+        ],
+      ],
+      {
+        align: ["left", "right", "right", "right", "right"],
+        widths: ["auto", 24, 24, 24, 18],
+        tone: (r, c) => {
+          if (c !== 4 || r >= rows.length) return undefined;
+          const d = rows[r][1].today - rows[r][1].yest;
+          return d < 0 ? BAD : d > 0 ? GOOD : undefined;
+        },
+      }
+    );
+  }
+  if (machineRows.size > 0) {
+    h3("Makine ve Ekipman", 15);
+    const rows = Array.from(machineRows.values()).sort((a, b) => a.company.localeCompare(b.company, "tr"));
+    table(
+      ["Firma", "Makine Tipi", "Adet", "Makine-Saat"],
+      rows.map((r) => [r.company, cap(r.type), String(r.count), formatNumber(r.hours, 0)]),
+      { align: ["left", "left", "right", "right"], widths: ["auto", 50, 18, 24] }
+    );
+  }
+
+  // 06 — Saha notları
+  h2("Saha Notları", 20);
+  let anyNote = false;
+  for (const [t, v] of [
+    ["Saha Özeti", report?.summary],
+    ["Sorunlar / Engeller", report?.issues],
+  ] as [string, string | undefined][]) {
+    if (!v?.trim()) continue;
+    anyNote = true;
+    h3(t, 10);
+    paragraph(v.trim());
+    y += 2;
+  }
+  if (!anyNote) emptyNote("Saha notu girilmedi.");
+
+  // 07 — Fotoğraflar
+  if (photos.length > 0) {
+    h2("Saha Fotoğrafları", 62);
+    K.photoGrid(photos);
+  }
+
+  // 08 — Onay
+  h2("Onay", 40);
+  K.signatures([
+    ["Saha Mühendisi", preparedBy ?? ""],
+    ["Şantiye Şefi", ""],
+    ["İşveren Temsilcisi", ""],
+  ]);
+  paragraph(
+    `Bu rapor ${brand} üzerindeki puantaj, gerçekleşme, planlama ve kritik iş kayıtlarından ${formatDate(toISODate(new Date()))} tarihinde derlenmiştir.`,
+    7.5,
+    MUTED
+  );
+
+  // Alt bilgi tüm sayfalarda; üst bilgi 2. sayfadan itibaren (1. sayfada antet var)
+  K.stampPages(1, `${project.name} · Günlük Saha Raporu`, formatDate(date), brand, 2);
+
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "-");
+  doc.save(`DCR-${safeName}-${date}.pdf`);
 }
