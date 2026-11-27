@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { sumByDateMap } from "@/lib/calc/progress";
 import { formatNumber, formatDate, toISODate, daysBetween, cn, spiLevel } from "@/lib/utils";
+import { addGeistFonts, stampStandardFooter } from "@/lib/pdf/kit";
 import { buildWbsTree } from "@/lib/wbs/tree";
 
 function escapeHtml(s: string): string {
@@ -368,7 +369,8 @@ export default function RealizationPage() {
       const pageH = pdf.internal.pageSize.getHeight();  // 297
       // canvas.width / scale = A4 px width; px → mm ölçeği
       const pxPerMm = canvas.width / pageW;
-      const pageHpx = pageH * pxPerMm;
+      // Alt 12 mm standart alt bilgiye ayrılır
+      const pageHpx = (pageH - 12) * pxPerMm;
 
       // canvas'ı dilim dilim sayfaya bas
       let yOffset = 0;
@@ -393,6 +395,8 @@ export default function RealizationPage() {
         pageNo++;
       }
 
+      await addGeistFonts(pdf);
+      stampStandardFooter(pdf, { marginX: 10 });
       pdf.save(`${project.name.replace(/\s+/g, "-")}-saha-formu-${date}.pdf`);
       toast("Saha formu PDF indirildi", "success");
     } catch (err) {

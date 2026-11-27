@@ -24,6 +24,7 @@ import { Alert } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/toast";
 import { confirmAction } from "@/components/ui/confirm";
 import { formatDate, formatMoney, formatNumber, cn, toISODate } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import type { ProcurementItem } from "@/lib/store/types";
 import type { Currency } from "@/lib/utils";
 import {
@@ -303,7 +304,7 @@ export default function ProcurementPage() {
 
       autoTable(pdf, {
         startY: headerY + headerH + 5,
-        margin: { left: marginX, right: marginX, top: 14, bottom: 12 },
+        margin: { left: marginX, right: marginX, top: 14, bottom: 13 },
         head: [["", "Malzeme", "Tedarikçi", "Plan", "Gerçek", "PO", "EXW", "Teslim", "Durum"]],
         body: body.map((r) => [
           r.crit, r.material, r.supplier, r.plan, r.gercek, r.po, r.exw, r.teslim, r.durum,
@@ -336,20 +337,9 @@ export default function ProcurementPage() {
           7: { cellWidth: 26, halign: "center", overflow: "visible" },
           8: { cellWidth: 25, halign: "center", fontStyle: "bold", overflow: "visible" },
         },
-        didDrawPage: (data) => {
-          const pageNum = pdf.getNumberOfPages();
-          const pageH = pdf.internal.pageSize.getHeight();
-          pdf.setFont("Geist", "normal");
-          pdf.setFontSize(7.5);
-          pdf.setTextColor(140, 140, 140);
-          pdf.text(
-            `${project.name}   ·   sayfa ${data.pageNumber}/${pageNum}`,
-            marginX,
-            pageH - 5
-          );
-          pdf.setTextColor(0, 0, 0);
-        },
       });
+
+      stampStandardFooter(pdf, { marginX });
 
       const fname = `${project.name.replace(/\s+/g, "-")}-Procurement-${toISODate(new Date())}.pdf`;
       pdf.save(fname);

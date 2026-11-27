@@ -45,6 +45,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn, formatDate, toISODate } from "@/lib/utils";
+import { addGeistFonts, stampStandardFooter } from "@/lib/pdf/kit";
 import { computeSchedule, getPlanRange, type LeafSchedule } from "@/lib/calc/predecessors";
 import { computeDurationRanges } from "@/lib/calc/duration-ranges";
 import { BigGantt, type TimelineRow } from "@/components/timeline/big-gantt";
@@ -236,7 +237,7 @@ export default function TimelinePage() {
         const margin = 10;
         const headerH = 14;
         const availW = pageW - margin * 2;
-        const availH = pageH - margin - headerH;
+        const availH = pageH - margin - headerH - 12; // alt bilgi payı
         const pxPerMm = canvas.width / availW;
         const imgWmm = availW;
         const imgHmm = canvas.height / pxPerMm;
@@ -271,11 +272,13 @@ export default function TimelinePage() {
             ctx.drawImage(canvas, 0, offsetY, canvas.width, sliceActualH, 0, 0, canvas.width, sliceActualH);
             const sliceData = tmp.toDataURL("image/png");
             if (p > 0) pdf.addPage("a3", "landscape");
-            drawHeader(`${baseSubtitle} · sayfa ${p + 1}/${totalPages}`);
+            drawHeader(baseSubtitle);
             const sliceHmmActual = sliceActualH / pxPerMm;
             pdf.addImage(sliceData, "PNG", margin, margin + headerH, imgWmm, sliceHmmActual);
           }
         }
+        await addGeistFonts(pdf);
+        stampStandardFooter(pdf, { marginX: margin });
         const fileName = `${project.name.replace(/\s+/g, "-")}-Timeline-${useBaseline ? "Baseline" : "Plan"}-${toISODate(new Date())}.pdf`;
         pdf.save(fileName);
         toast("Timeline PDF kaydedildi (A3)", "success");

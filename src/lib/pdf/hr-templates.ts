@@ -4,6 +4,7 @@
  */
 
 import { formatDate, toISODate } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import { renderHtmlToPdf } from "./html-to-pdf";
 
 export type HRCategory = "ozluk" | "isg";
@@ -1082,16 +1083,8 @@ async function downloadChecklistPDF(config: ChecklistConfig): Promise<void> {
         pdf.text(`Sayfa ${i} / ${totalPages}`, pageW - marginX, 14, { align: "right" });
       }
 
-      pdf.setDrawColor(212, 212, 216);
-      pdf.setLineWidth(0.2);
-      pdf.line(marginX, pageH - footerH + 2, pageW - marginX, pageH - footerH + 2);
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(140, 140, 140);
-      const leftFooter = `${context.projectName ?? ""}${context.projectName ? "  ·  " : ""}proje-yonetim-platformu`;
-      pdf.text(leftFooter, marginX, pageH - 4);
-      pdf.text(`${today}  ·  ${fileName}  ·  ${i}/${totalPages}`, pageW - marginX, pageH - 4, { align: "right" });
     }
+    stampStandardFooter(pdf, { marginX });
 
     pdf.save(`${fileName}.pdf`);
   } finally {
@@ -1385,17 +1378,8 @@ export async function downloadDocumentChecklistPDF(
         pdf.text(`Sayfa ${i} / ${totalPages}`, pageW - marginX, 14, { align: "right" });
       }
 
-      // FOOTER
-      pdf.setDrawColor(212, 212, 216);
-      pdf.setLineWidth(0.2);
-      pdf.line(marginX, pageH - footerH + 2, pageW - marginX, pageH - footerH + 2);
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(140, 140, 140);
-      const leftFooter = `${context.projectName ?? ""}${context.projectName ? "  ·  " : ""}proje-yonetim-platformu`;
-      pdf.text(leftFooter, marginX, pageH - 4);
-      pdf.text(`${today}  ·  istenen-belgeler-listesi  ·  ${i}/${totalPages}`, pageW - marginX, pageH - 4, { align: "right" });
     }
+    stampStandardFooter(pdf, { marginX });
 
     pdf.save(`istenen-belgeler-listesi-${toISODate(new Date())}.pdf`);
   } finally {

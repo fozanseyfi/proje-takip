@@ -30,6 +30,7 @@ import {
   formatNumber,
   type Currency,
 } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import type {
   PersonnelMaster,
   MachineMaster,
@@ -783,7 +784,7 @@ export default function MonthlyTimesheetPage() {
 
       autoTable(pdf, {
         startY: tableStartY,
-        margin: { left: marginX, right: marginX, bottom: 10 },
+        margin: { left: marginX, right: marginX, bottom: 13 },
         tableWidth: "wrap",
         head: [
           [
@@ -856,19 +857,8 @@ export default function MonthlyTimesheetPage() {
         }
       }
 
-      // Sayfa numaraları (1/N)
-      const totalPages = pdf.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        pdf.setPage(i);
-        pdf.setFont("Geist", "normal");
-        pdf.setFontSize(7);
-        pdf.setTextColor(140, 140, 140);
-        pdf.text(
-          `${project.name}  ·  ${TR_MONTHS[month0]} ${year}  ·  sayfa ${i}/${totalPages}`,
-          marginX,
-          pageH - 4
-        );
-      }
+      // Standart alt bilgi (pm.fozanseyfi.com · Sayfa x / y)
+      stampStandardFooter(pdf, { marginX });
 
       const fname = `${project.name.replace(/\s+/g, "-")}-Puantaj-${TR_MONTHS[month0]}-${year}-${tab === "personnel" ? "Personel" : "Makine"}.pdf`;
       pdf.save(fname);

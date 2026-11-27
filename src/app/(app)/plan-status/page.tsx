@@ -327,28 +327,6 @@ export default function PlanStatusPage() {
   async function exportPdf() {
     if (!project) return;
     try {
-      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
-        import("jspdf"),
-        import("jspdf-autotable"),
-      ]);
-      const autoTable = autoTableMod.default;
-
-      const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-      if (!fontResp.ok) throw new Error("Font yüklenemedi");
-      const fontBuf = await fontResp.arrayBuffer();
-      const fontB64 = (() => {
-        const bytes = new Uint8Array(fontBuf);
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(
-            null,
-            Array.from(bytes.subarray(i, i + chunk))
-          );
-        }
-        return btoa(binary);
-      })();
-
       type Row = {
         kod: string;
         ad: string;
@@ -421,369 +399,166 @@ export default function PlanStatusPage() {
         });
       }
 
-      // A4 PORTRAIT — 210 × 297 mm
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-      pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-      pdf.addFont("Geist-Regular.ttf", "Geist", "bold");
-      pdf.setFont("Geist", "normal");
+      // ───── Kurumsal format (Yönetim Özeti / DCR ile aynı altyapı) ─────
+      const kit = await import("@/lib/pdf/kit");
+      const { NAVY_DEEP, NAVY, INK, MUTED, LINE, SOFT, GOOD, WARN, BAD, WHITE, PW, ML, MR, CW, TOP, PH, BOTTOM } = kit;
+      const { doc: pdf, autoTable } = await kit.createPdfDoc();
+      pdf.setProperties({ title: `${project.name} — Plan / Gerçekleşme Özeti — ${formatDate(filterDate)}` });
+      let y = TOP;
+      const K = kit.createKit(pdf, autoTable, { get: () => y, set: (v) => (y = v) });
 
-      const pageW = pdf.internal.pageSize.getWidth();
-      const marginX = 8;
-      const availW = pageW - marginX * 2;
-
-      // ───── HEADER (BoQ tarzı profesyonel görsel — smooth gradient + rounded cards) ─────
-      const headerX = marginX;
-      const headerY = marginX;
-      const headerW = availW;
-      const headerH = 56; // biraz daha yüksek — daha rahat tipografi
-
-      // Smooth gradient — platform yeşili: brand-700 #047857 → brand-500 #10b981
-      // Pürüzsüz horizontal gradient, çizgi/şerit yok
-      const strips = 240;
-      const stripW = headerW / strips;
-      const c1 = { r: 4, g: 120, b: 87 };    // #047857 brand-700
-      const c2 = { r: 16, g: 185, b: 129 };  // #10b981 brand-500
-      for (let i = 0; i < strips; i++) {
-        const t = i / (strips - 1);
-        const r = Math.round(c1.r + (c2.r - c1.r) * t);
-        const g = Math.round(c1.g + (c2.g - c1.g) * t);
-        const b = Math.round(c1.b + (c2.b - c1.b) * t);
-        pdf.setFillColor(r, g, b);
-        pdf.rect(headerX + i * stripW, headerY, stripW + 0.2, headerH, "F");
-      }
-
-      // Dekoratif daireler — header'a clip edilmiş, hafif daha koyu yeşil tonu ile
-      // saydam efekt (GState ile opacity). Profesyonel "subtle highlight" hissi.
-      pdf.saveGraphicsState();
-      pdf.rect(headerX, headerY, headerW, headerH);
-      pdf.clip();
-      pdf.discardPath();
-
-      // jsPDF v3+ GState API — opacity destekli
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfAny = pdf as any;
-      const gsLight = new pdfAny.GState({ opacity: 0.18 });
-      pdfAny.setGState(gsLight);
-
-      // Büyük daire — sağ üst köşede, kısmen dışa taşar (clip ile kesilir)
-      pdf.setFillColor(4, 78, 56); // brand-800 koyu yeşil; %18 opacity ile subtle
-      pdf.circle(
-        headerX + headerW - 4,
-        headerY + 4,
-        28,
-        "F"
-      );
-
-      // Küçük daire — sağ alt bölgeye, kısmen dışa taşar
-      pdf.setFillColor(4, 78, 56);
-      pdf.circle(
-        headerX + headerW * 0.78,
-        headerY + headerH + 2,
-        18,
-        "F"
-      );
-
-      // Opacity reset
-      pdfAny.setGState(new pdfAny.GState({ opacity: 1 }));
-      pdf.restoreGraphicsState();
-
-      // Sol üst rozet
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231); // çok açık yeşilimsi beyaz
-      pdf.text("PLAN / GERÇEKLEŞME  ·  DURUM RAPORU", headerX + 7, headerY + 8);
-      pdf.setDrawColor(220, 252, 231);
-      pdf.setLineWidth(0.2);
-      pdf.line(headerX + 7, headerY + 9.2, headerX + 56, headerY + 9.2);
-
-      // Büyük proje adı
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(28);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(project.name, headerX + 7, headerY + 21);
-
-      // Rapor günü (filtre tarihi)
-      const aylar = [
-        "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-      ];
-      const fd = new Date(filterDate);
-      const fdTr = `${fd.getDate()} ${aylar[fd.getMonth()]} ${fd.getFullYear()}`;
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(209, 250, 229); // soft mint
-      pdf.text(`Rapor günü: ${fdTr}`, headerX + 7, headerY + 26);
-
-      // Sağ üst — TOPLAM KALEM + büyük sayı + grup count
       const leafCount = wbs.filter((w) => w.isLeaf && !w.deletedAt).length;
       const groupCount = wbs.filter((w) => !w.isLeaf && !w.deletedAt && w.level >= 1).length;
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("TOPLAM KALEM", headerX + headerW - 7, headerY + 8, { align: "right" });
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(32);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(String(leafCount), headerX + headerW - 7, headerY + 22, { align: "right" });
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`${groupCount} grup`, headerX + headerW - 7, headerY + 27, { align: "right" });
 
-      // Alt 4'lü rounded info kartları — koyu yeşil (header'dan koyu)
-      const cardY = headerY + 32;
-      const cardH = 18;
-      const cardCount = 4;
-      const cardGap = 2.5;
-      const cardW = (headerW - 14 - cardGap * (cardCount - 1)) / cardCount;
+      // Antet
+      const BAND = 40;
+      K.fill(NAVY_DEEP);
+      pdf.rect(0, 0, PW, BAND, "F");
+      K.fill(NAVY);
+      pdf.rect(0, BAND - 1.6, PW, 1.6, "F");
+      K.font("bold", 7.5, [143, 163, 201]);
+      pdf.text("PLAN / GERÇEKLEŞME ÖZETİ  ·  DURUM RAPORU", ML, 13, { charSpace: 0.7 });
+      K.font("normal", 7.5, [143, 163, 201]);
+      pdf.text(`Rapor günü: ${formatDate(filterDate)}`, PW - MR, 13, { align: "right" });
+      K.font("bold", 18, WHITE);
+      pdf.text(pdf.splitTextToSize(project.name, CW - 40)[0] as string, ML, 24);
+      K.font("bold", 15, WHITE);
+      pdf.text(String(leafCount), PW - MR, 24, { align: "right" });
+      K.font("normal", 8.5, [183, 196, 222]);
+      pdf.text(
+        [
+          project.location,
+          project.installedCapacityMw ? `${formatNumber(project.installedCapacityMw, 2)} MWp` : "",
+          `${formatDate(project.startDate)} – ${formatDate(project.plannedEnd)}`,
+        ]
+          .filter(Boolean)
+          .join("   ·   "),
+        ML,
+        31.5
+      );
+      pdf.text(`iş kalemi · ${groupCount} grup`, PW - MR, 31.5, { align: "right" });
+      y = BAND + 6;
 
-      const cards = [
-        { label: "LOKASYON", value: project.location || "—" },
+      // Göstergeler
+      const spiT = forecast.spi == null ? undefined : forecast.spi >= 0.95 ? GOOD : forecast.spi >= 0.85 ? WARN : BAD;
+      const showFc = !conf.hideValues && forecast.forecastEnd != null;
+      const fcTone = !showFc ? undefined : forecast.deltaDays <= 0 ? GOOD : forecast.deltaDays <= 7 ? WARN : BAD;
+      K.kpis([
+        { label: "Planlanan (PV)", value: kit.pct1(forecast.pv * 100), sub: "rapor gününe kadar" },
+        { label: "Gerçekleşen (EV)", value: kit.pct1(forecast.ev * 100), sub: "sahada tamamlanan", tone: spiT },
+        { label: "Sapma (SV)", value: `${kit.signed(forecast.sv * 100)} puan`, sub: forecast.sv >= 0 ? "önde / zamanında" : "geride", tone: forecast.sv >= 0 ? GOOD : BAD },
+        { label: "SPI", value: kit.spiTxt(forecast.spi), sub: "≥ 0,95 sağlıklı", tone: spiT },
+        { label: "Plan Bitiş", value: formatDate(project.plannedEnd), sub: `${forecast.plannedDurationDays} gün` },
+        { label: "Tahmini Bitiş", value: showFc ? formatDate(forecast.forecastEnd as string) : "—", sub: conf.hideValues ? "yetersiz veri" : "SPI'ya göre", tone: fcTone },
         {
-          label: "DC GÜÇ",
-          value: project.installedCapacityMw
-            ? `${project.installedCapacityMw.toFixed(2).replace(".", ",")} MWp`
-            : "—",
+          label: "Tahmini Sapma",
+          value: showFc ? `${kit.signed(forecast.deltaDays, 0)} gün` : "—",
+          sub: !showFc ? "—" : forecast.deltaDays > 0 ? "gecikme" : forecast.deltaDays < 0 ? "erken" : "zamanında",
+          tone: fcTone,
         },
-        { label: "PROJE BAŞL.", value: formatDate(project.startDate) },
-        { label: "PROJE BİTİŞ", value: formatDate(project.plannedEnd) },
-      ];
-      cards.forEach((c, i) => {
-        const cx = headerX + 7 + i * (cardW + cardGap);
-        // Rounded card — koyu yeşil
-        pdf.setFillColor(2, 44, 34); // #022c22 derin yeşil-siyah
-        pdf.roundedRect(cx, cardY, cardW, cardH, 1.8, 1.8, "F");
-        // Üst accent çizgi — emerald-300
-        pdf.setDrawColor(110, 231, 183); // #6ee7b7
-        pdf.setLineWidth(0.25);
-        pdf.line(cx + 3, cardY + 6.5, cx + 6.5, cardY + 6.5);
-        // Label
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(6);
-        pdf.setTextColor(167, 243, 208); // emerald-200
-        pdf.text(c.label, cx + 3, cardY + 5.5);
-        // Value
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(11);
-        pdf.setTextColor(255, 255, 255);
-        // Uzun değerleri sığdır
-        const maxW = cardW - 6;
-        const val = c.value;
-        const valW = pdf.getTextWidth(val);
-        if (valW > maxW) {
-          // font'u küçült
-          let fs = 11;
-          while (fs > 7 && pdf.getTextWidth(val) > maxW) {
-            fs -= 0.5;
-            pdf.setFontSize(fs);
-          }
-        }
-        pdf.text(val, cx + 3, cardY + 13);
-      });
+        { label: "Proje Durumu", value: projStatus.label, sub: `Gerçekleşme ${fmtPct(projRealPct)}` },
+      ]);
 
-      pdf.setTextColor(0, 0, 0);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.2);
-
-      // ───── TABLO ─────
-      const tableStartY = headerY + headerH + 5;
-
-      // Sütun genişlikleri — A4 portrait 194mm. Tarihler tek satıra sığsın diye 19mm.
-      // Sıra: Kod | Ad | Plan(B/B/S) | Gerç(B/B/S) | Durum | Plan% | Gerçek%
-      // Sum = 11 + 49 + 19+19+10 + 19+19+10 + 14 + 12 + 12 = 194
-      const widths = {
-        kod: 11,
-        ad: 49,
-        planBas: 19,
-        planBit: 19,
-        planSure: 10,
-        realBas: 19,
-        realBit: 19,
-        realSure: 10,
-        durum: 14,
-        planPct: 12,
-        realPct: 12,
-      };
-
+      K.h3("İş Kalemleri · Plan ve Gerçekleşme", 30);
+      const BADGE: Record<string, [number, number, number]> = { ok: GOOD, early: NAVY, warn: WARN, late: BAD };
+      const W = [12, 40, 17, 17, 10, 17, 17, 10, 14, 12, 12]; // toplam 178
       autoTable(pdf, {
-        startY: tableStartY,
-        margin: { left: marginX, right: marginX, top: marginX, bottom: 10 },
+        startY: y,
+        margin: { left: ML, right: MR, top: TOP, bottom: PH - BOTTOM },
+        theme: "plain",
         head: [
           [
             { content: "Kod", rowSpan: 2 },
-            { content: "Ad", rowSpan: 2 },
-            {
-              content: "PLANLAMA",
-              colSpan: 3,
-              // brand-700 koyu yeşil
-              styles: { halign: "center", fillColor: [4, 120, 87] },
-            },
-            {
-              content: "GERÇEKLEŞME",
-              colSpan: 3,
-              // brand-500 açık yeşil — Plan'dan ayrılır ama platformla uyumlu
-              styles: { halign: "center", fillColor: [16, 185, 129] },
-            },
+            { content: "İş Kalemi", rowSpan: 2 },
+            { content: "PLANLAMA", colSpan: 3, styles: { halign: "center" } },
+            { content: "GERÇEKLEŞME", colSpan: 3, styles: { halign: "center" } },
             { content: "Durum", rowSpan: 2 },
-            {
-              content: "Plan%",
-              rowSpan: 2,
-              styles: { halign: "right", fillColor: [4, 120, 87] },
-            },
-            {
-              content: "Gerçek%",
-              rowSpan: 2,
-              styles: { halign: "right", fillColor: [16, 185, 129] },
-            },
+            { content: "Plan %", rowSpan: 2, styles: { halign: "right" } },
+            { content: "Gerç. %", rowSpan: 2, styles: { halign: "right" } },
           ],
           ["Başl.", "Bitiş", "Süre", "Başl.", "Bitiş", "Süre"],
         ],
-        body: rows.map((r) => [
-          r.kod,
-          r.ad,
-          r.planBas,
-          r.planBit,
-          r.planSure,
-          r.realBas,
-          r.realBit,
-          r.realSure,
-          r.durum,
-          r.planPct,
-          r.realPct,
-        ]),
+        body: rows.map((r) => [r.kod, r.ad, r.planBas, r.planBit, r.planSure, r.realBas, r.realBit, r.realSure, r.durum, r.planPct, r.realPct]),
         styles: {
           font: "Geist",
-          fontSize: 6.5,
-          cellPadding: { top: 1.2, right: 1.2, bottom: 1.2, left: 1.2 },
-          overflow: "linebreak",
+          fontSize: 6.8,
+          textColor: INK,
+          cellPadding: { top: 1.4, bottom: 1.4, left: 1.2, right: 1.2 },
+          lineColor: LINE,
+          lineWidth: { bottom: 0.15 },
           valign: "middle",
-          lineColor: [220, 220, 230],
-          lineWidth: 0.1,
-          textColor: [15, 23, 42],
+          overflow: "linebreak",
         },
         headStyles: {
-          fillColor: [30, 41, 59],
-          textColor: 255,
           fontStyle: "bold",
-          fontSize: 7,
+          textColor: NAVY_DEEP,
+          fillColor: false as never,
+          lineColor: NAVY_DEEP,
+          lineWidth: { bottom: 0.45 },
+          fontSize: 6.8,
           halign: "center",
         },
         columnStyles: {
-          0: { cellWidth: widths.kod, fontStyle: "bold", halign: "left", fontSize: 6, overflow: "visible" },
-          1: { cellWidth: widths.ad, halign: "left", overflow: "linebreak" },
-          // Tarih sütunları — tek satır, taşmasın
-          2: { cellWidth: widths.planBas, halign: "center", overflow: "visible" },
-          3: { cellWidth: widths.planBit, halign: "center", overflow: "visible" },
-          4: { cellWidth: widths.planSure, halign: "right", overflow: "visible" },
-          5: { cellWidth: widths.realBas, halign: "center", overflow: "visible" },
-          6: { cellWidth: widths.realBit, halign: "center", overflow: "visible" },
-          7: { cellWidth: widths.realSure, halign: "right", overflow: "visible" },
-          8: { cellWidth: widths.durum, halign: "center", fontStyle: "bold", fontSize: 6, overflow: "visible" },
-          9: { cellWidth: widths.planPct, halign: "right", fontStyle: "bold", overflow: "visible" },
-          10: { cellWidth: widths.realPct, halign: "right", fontStyle: "bold", overflow: "visible" },
+          0: { cellWidth: W[0], halign: "left", fontSize: 6.2 },
+          1: { cellWidth: W[1], halign: "left" },
+          2: { cellWidth: W[2], halign: "center" },
+          3: { cellWidth: W[3], halign: "center" },
+          4: { cellWidth: W[4], halign: "right" },
+          5: { cellWidth: W[5], halign: "center" },
+          6: { cellWidth: W[6], halign: "center" },
+          7: { cellWidth: W[7], halign: "right" },
+          8: { cellWidth: W[8], halign: "center", fontStyle: "bold", fontSize: 6.2 },
+          9: { cellWidth: W[9], halign: "right", fontStyle: "bold" },
+          10: { cellWidth: W[10], halign: "right", fontStyle: "bold" },
         },
         didParseCell: (data) => {
           if (data.section !== "body") return;
           const row = rows[data.row.index];
           if (!row) return;
           if (row.isTotal) {
-            // Toplam proje — brand-800 koyu yeşil, beyaz yazı
-            data.cell.styles.fillColor = [6, 78, 59];
-            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fillColor = NAVY_DEEP;
+            data.cell.styles.textColor = WHITE;
             data.cell.styles.fontStyle = "bold";
-            data.cell.styles.fontSize = 7.5;
-          } else if (row.level === 1) {
-            // L1 — açık yeşil zemin, brand-700 yazı
-            data.cell.styles.fillColor = [220, 252, 231]; // emerald-100
-            data.cell.styles.textColor = [4, 120, 87];     // brand-700
+            data.cell.styles.fontSize = 7.2;
+            return;
+          }
+          if (row.level === 1) {
+            data.cell.styles.fillColor = SOFT;
+            data.cell.styles.textColor = NAVY_DEEP;
             data.cell.styles.fontStyle = "bold";
           } else if (row.level === 2) {
-            // L2 — daha açık yeşil, brand-600 yazı
-            data.cell.styles.fillColor = [236, 253, 245]; // emerald-50
-            data.cell.styles.textColor = [5, 150, 105];   // brand-600
+            data.cell.styles.textColor = NAVY;
             data.cell.styles.fontStyle = "bold";
           }
-          // Durum sütunu artık index 8 (yeni sıralamada)
-          if (data.column.index === 8 && !row.isTotal) {
-            if (row.statusBadge === "ok") {
-              data.cell.styles.fillColor = [220, 252, 231];
-              data.cell.styles.textColor = [22, 101, 52];
-            } else if (row.statusBadge === "early") {
-              data.cell.styles.fillColor = [219, 234, 254];
-              data.cell.styles.textColor = [30, 64, 175];
-            } else if (row.statusBadge === "warn") {
-              data.cell.styles.fillColor = [254, 249, 195];
-              data.cell.styles.textColor = [161, 98, 7];
-            } else if (row.statusBadge === "late") {
-              data.cell.styles.fillColor = [254, 226, 226];
-              data.cell.styles.textColor = [185, 28, 28];
-            }
+          if (data.column.index === 8) {
+            const t = BADGE[row.statusBadge as string];
+            if (t) data.cell.styles.textColor = t;
           }
-          // Gerç Süre sütunu (index 7) — devam eden işlerde sarı vurgu
-          if (data.column.index === 7 && row.realOngoing && !row.isTotal) {
-            data.cell.styles.fillColor = [254, 249, 195]; // yellow-100
-            data.cell.styles.textColor = [161, 98, 7];   // yellow-700
+          if (data.column.index === 7 && row.realOngoing) {
+            data.cell.styles.textColor = WARN;
             data.cell.styles.fontStyle = "bold";
           }
+          if (data.column.index === 10) data.cell.styles.textColor = row.level === 1 ? NAVY_DEEP : GOOD;
         },
         didDrawCell: (data) => {
-          // Plan% kolonunun sol kenarına (Durum / % ayrımı) ince accent çizgi.
-          // didParseCell ile lineColor değiştirmek tüm 4 kenarı koyulaştırıyordu;
-          // burada sadece SOL tarafa çiziyoruz, alt çizgi normal kalıyor.
-          if (data.column.index === 9) {
-            const { x, y, height } = data.cell;
-            pdf.setDrawColor(5, 150, 105); // brand-600 #059669
-            pdf.setLineWidth(0.5);
-            pdf.line(x, y, x, y + height);
-            // Restore defaults
-            pdf.setDrawColor(220, 220, 230);
-            pdf.setLineWidth(0.1);
+          // Planlama / Gerçekleşme gruplarını ayıran ince dikey çizgi
+          if (data.column.index === 2 || data.column.index === 5 || data.column.index === 8) {
+            const { x, y: cy, height } = data.cell;
+            pdf.setDrawColor(LINE[0], LINE[1], LINE[2]);
+            pdf.setLineWidth(0.2);
+            pdf.line(x, cy, x, cy + height);
           }
         },
-        // Sayfa numarası burada YAZILMAZ — autoTable bittikten sonra toplam sayfa
-        // sayısı kesinleştiği için tek seferde basıyoruz (1/N, 2/N … N/N).
       });
+      y = (pdf as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+      K.paragraph(
+        "• Gerçekleşme · Süre sütununda turuncu ve • işaretli değerler, kalemin gerçekleşmesinin henüz %100 olmadığını (işin devam ettiğini) gösterir. " +
+          "Durum: zamanında · eksi gün = erken · artı gün = gecikme (başlangıç/bitiş farkının büyüğü).",
+        7.5,
+        MUTED
+      );
 
-      // ─── Sayfa numaraları (1/N, 2/N …) ───
-      {
-        const totalPages = pdf.getNumberOfPages();
-        const pageH = pdf.internal.pageSize.getHeight();
-        for (let i = 1; i <= totalPages; i++) {
-          pdf.setPage(i);
-          pdf.setFont("Geist", "normal");
-          pdf.setFontSize(7.5);
-          pdf.setTextColor(140, 140, 140);
-          pdf.text(
-            `${project.name}   ·   sayfa ${i}/${totalPages}`,
-            marginX,
-            pageH - 5
-          );
-        }
-        pdf.setTextColor(0, 0, 0);
-      }
-
-      // ─── Tablonun altına işaret açıklaması ───
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const lastTable = (pdf as any).lastAutoTable;
-      if (lastTable && typeof lastTable.finalY === "number") {
-        const legendY = lastTable.finalY + 5;
-        const pageH = pdf.internal.pageSize.getHeight();
-        if (legendY < pageH - 12) {
-          pdf.setFont("Geist", "bold");
-          pdf.setFontSize(7);
-          pdf.setTextColor(161, 98, 7);
-          pdf.text("•", marginX, legendY);
-          pdf.setFont("Geist", "normal");
-          pdf.setFontSize(7);
-          pdf.setTextColor(90, 90, 90);
-          pdf.text(
-            "  Gerçekleşme · Süre sütunundaki bu işaret, kalemin gerçekleşme yüzdesi henüz %100 olmadığını — işin hâlâ devam ettiğini gösterir.",
-            marginX + 2,
-            legendY
-          );
-        }
-      }
+      K.stampPages(`${project.name} · Plan / Gerçekleşme Özeti`, formatDate(filterDate), 2);
 
       const fname = `${project.name.replace(/\s+/g, "-")}-PlanGerceklesme-${toISODate(new Date())}.pdf`;
       pdf.save(fname);

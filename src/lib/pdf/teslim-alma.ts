@@ -14,6 +14,7 @@
  */
 
 import { formatDate, toISODate } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import type { Project } from "@/lib/store/types";
 import type { TeslimAlmaReport, TeslimAlmaItemResult, TeslimAlmaStatus } from "@/lib/store/types";
 import { TESLIM_ALMA_TEMPLATE, type TeslimAlmaSection, type TeslimAlmaItem } from "@/lib/data/teslim-alma-template";
@@ -573,17 +574,8 @@ async function _renderTeslimAlmaPDF(opts: PDFOptions): Promise<void> {
       pdf.setTextColor(167, 243, 208);
       pdf.text("v1.0", pageW - marginX, 19, { align: "right" });
 
-      // FOOTER
-      pdf.setDrawColor(220, 220, 230);
-      pdf.setLineWidth(0.2);
-      pdf.line(marginX, pageH - footerH + 2, pageW - marginX, pageH - footerH + 2);
-
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(140, 140, 140);
-      pdf.text(`${opts.project.name}  ·  Saha Denetim Checklist v1.0`, marginX, pageH - 4);
-      pdf.text(`${today}  ·  ${i}/${totalPages}`, pageW - marginX, pageH - 4, { align: "right" });
     }
+    stampStandardFooter(pdf, { marginX });
 
     // ─── İndir ───
     const safeName = opts.project.name.replace(/[^\w\s\-_.]/g, "").replace(/\s+/g, "-").slice(0, 60);

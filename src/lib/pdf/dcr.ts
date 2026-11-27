@@ -57,6 +57,7 @@ import {
   coverImage,
   createPdfDoc,
   createKit,
+  SITE,
 } from "@/lib/pdf/kit";
 
 export interface DCRInput {
@@ -549,13 +550,13 @@ async function renderDCR(input: DCRInput): Promise<void> {
     ["İşveren Temsilcisi", ""],
   ]);
   paragraph(
-    `Bu rapor ${brand} üzerindeki puantaj, gerçekleşme, planlama ve kritik iş kayıtlarından ${formatDate(toISODate(new Date()))} tarihinde derlenmiştir.`,
+    `Bu rapor ${brand} (${SITE}) üzerindeki puantaj, gerçekleşme, planlama ve kritik iş kayıtlarından ${formatDate(toISODate(new Date()))} tarihinde derlenmiştir.`,
     7.5,
     MUTED
   );
 
   // Alt bilgi tüm sayfalarda; üst bilgi 2. sayfadan itibaren (1. sayfada antet var)
-  K.stampPages(1, `${project.name} · Günlük Saha Raporu`, formatDate(date), brand, 2);
+  K.stampPages(`${project.name} · Günlük Saha Raporu`, formatDate(date), 2);
 
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "-");
   doc.save(`DCR-${safeName}-${date}.pdf`);

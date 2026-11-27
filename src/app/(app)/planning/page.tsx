@@ -42,6 +42,7 @@ import { useToast } from "@/components/ui/toast";
 import { confirmAction } from "@/components/ui/confirm";
 import { computeProgress } from "@/lib/calc/progress";
 import { formatNumber, formatDate, toISODate, addDays, daysBetween, cn } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import { ListChecks, Link2, Unlink, X, AlertTriangle } from "lucide-react";
 import {
   buildWbsTree,
@@ -1089,7 +1090,7 @@ export default function PlanningPage() {
 
       autoTable(pdf, {
         startY: headerY + headerH + 5,
-        margin: { left: marginX, right: marginX, top: 14, bottom: 12 },
+        margin: { left: marginX, right: marginX, top: 14, bottom: 13 },
         head: [["Kod", "Ad", "Süre", "Başlangıç", "Bitiş"]],
         body,
         styles: {
@@ -1134,20 +1135,9 @@ export default function PlanningPage() {
             data.cell.styles.fontStyle = "bold";
           }
         },
-        didDrawPage: (data) => {
-          const pageNum = pdf.getNumberOfPages();
-          const pageH = pdf.internal.pageSize.getHeight();
-          pdf.setFont("Geist", "normal");
-          pdf.setFontSize(8);
-          pdf.setTextColor(140, 140, 140);
-          pdf.text(
-            `${project.name}   ·   sayfa ${data.pageNumber}/${pageNum}`,
-            marginX,
-            pageH - 6
-          );
-          pdf.setTextColor(0, 0, 0);
-        },
       });
+
+      stampStandardFooter(pdf, { marginX });
 
       const fname = `${project.name.replace(/\s+/g, "-")}-PlanOzeti-${toISODate(new Date())}.pdf`;
       pdf.save(fname);

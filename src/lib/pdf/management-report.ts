@@ -68,6 +68,7 @@ import {
   coverImage,
   createPdfDoc,
   createKit,
+  SITE,
 } from "@/lib/pdf/kit";
 
 interface Input {
@@ -598,6 +599,8 @@ async function renderReport(input: Input): Promise<void> {
     ["Toplam Süre", `${project.durationDays} gün`],
     ["Durum", STATUS_LABEL[project.status] ?? project.status],
     ["Rapor Tarihi", formatDate(today)],
+    ["Hazırlayan", preparedBy || "—"],
+    ["Oluşturulma", formatDate(toISODate(new Date()))],
   ]);
   const tocY = y + 2;
 
@@ -1117,7 +1120,7 @@ async function renderReport(input: Input): Promise<void> {
     ["Onaylayan", ""],
   ]);
   paragraph(
-    `Bu rapor ${brand} üzerinde kayıtlı planlama, gerçekleşme, puantaj, satın alma ve hakediş verilerinden ` +
+    `Bu rapor ${brand} (${SITE}) üzerinde kayıtlı planlama, gerçekleşme, puantaj, satın alma ve hakediş verilerinden ` +
       `${formatDate(toISODate(new Date()))} tarihinde derlenmiştir.`,
     7.5,
     MUTED
@@ -1126,7 +1129,7 @@ async function renderReport(input: Input): Promise<void> {
   // ════════════════════════════════════════════════════════════════════
   // KAPAK İÇİNDEKİLER + ÜST/ALT BİLGİ
   // ════════════════════════════════════════════════════════════════════
-  K.stampPages(2, project.name, `Yönetim Özeti · ${formatDate(today)}`, brand);
+  K.stampPages(project.name, `Yönetim Özeti · ${formatDate(today)}`, 2);
   doc.setPage(1);
   let ty = tocY;
   font("bold", 9.5, NAVY);
@@ -1150,13 +1153,6 @@ async function renderReport(input: Input): Promise<void> {
     doc.text(String(t.page), ML + CW, ty, { align: "right" });
     ty += 6;
   }
-  stroke(LINE);
-  doc.setLineWidth(0.2);
-  doc.line(ML, 286, ML + CW, 286);
-  font("normal", 7, MUTED);
-  doc.text(`Hazırlayan: ${preparedBy ?? "—"}`, ML, 290.5);
-  doc.text(`Oluşturulma: ${formatDate(toISODate(new Date()))}`, PW / 2, 290.5, { align: "center" });
-  doc.text("Gizli · Kurum içi kullanım içindir", PW - MR, 290.5, { align: "right" });
 
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "-");
   doc.save(`${safeName}-Yonetim-Ozeti-${today}.pdf`);

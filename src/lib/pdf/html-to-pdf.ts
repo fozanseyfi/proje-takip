@@ -8,6 +8,7 @@
  */
 
 import type { jsPDF as JsPDFType } from "jspdf";
+import { addGeistFonts, stampStandardFooter } from "@/lib/pdf/kit";
 
 export interface HTMLToPDFOptions {
   /** Render edilecek DOM elementi (görünmez konumda olabilir). */
@@ -136,6 +137,9 @@ export async function renderHtmlToPdf(opts: HTMLToPDFOptions): Promise<JsPDFType
     if (pageNo > 50) break;
   }
 
+  // Standart alt bilgi (alt kenar boşluğu en az 12 mm olmalı)
+  await addGeistFonts(pdf);
+  stampStandardFooter(pdf, { marginX: margin.left });
   pdf.save(`${opts.fileName}.pdf`);
   return pdf;
 }

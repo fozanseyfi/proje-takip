@@ -5,6 +5,7 @@
  */
 
 import { formatDate, toISODate } from "@/lib/utils";
+import { stampStandardFooter } from "@/lib/pdf/kit";
 import { loadingOverlay } from "@/lib/ui-loading";
 
 export interface MasterPDFColumn {
@@ -336,25 +337,8 @@ async function _renderMasterListPDF(opts: MasterPDFOptions): Promise<void> {
         pdf.text(`${opts.rows.length} kayıt`, pageW - marginX, 19, { align: "right" });
       }
 
-      // FOOTER
-      pdf.setDrawColor(220, 220, 230);
-      pdf.setLineWidth(0.2);
-      pdf.line(marginX, pageH - footerH + 2, pageW - marginX, pageH - footerH + 2);
-
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(7);
-      pdf.setTextColor(140, 140, 140);
-      const leftFooter = opts.projectName
-        ? `${opts.projectName}  ·  proje-yonetim-platformu`
-        : "proje-yonetim-platformu";
-      pdf.text(leftFooter, marginX, pageH - 4);
-      pdf.text(
-        `${today}  ·  ${i}/${totalPages}`,
-        pageW - marginX,
-        pageH - 4,
-        { align: "right" }
-      );
     }
+    stampStandardFooter(pdf, { marginX });
 
     pdf.save(`${opts.fileName}.pdf`);
   } finally {

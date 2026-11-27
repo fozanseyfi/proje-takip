@@ -49,6 +49,40 @@ export const PRIORITY_LABEL: Record<string, string> = {
   low: "Düşük",
 };
 
+/** Tüm PDF'lerin alt bilgisinde görünen platform adresi. */
+export const SITE = "pm.fozanseyfi.com";
+
+/**
+ * Standart alt bilgi — platformdaki TÜM PDF'lerde aynı:
+ *   pm.fozanseyfi.com · Gizli · Kurum içi kullanım içindir · Sayfa x / y
+ * Belgede "Geist" fontu kayıtlı olmalı (bold yoksa normal kullanılır).
+ * Sayfa boyutu/yönü her sayfadan okunur (dikey + yatay belgeler).
+ */
+export function stampStandardFooter(doc: JsPDF, opts: { marginX?: number; from?: number } = {}) {
+  const mx = opts.marginX ?? ML;
+  const total = doc.getNumberOfPages();
+  const fonts = doc.getFontList() as Record<string, string[]>;
+  const hasBold = (fonts["Geist"] ?? []).includes("bold");
+  for (let p = opts.from ?? 1; p <= total; p++) {
+    doc.setPage(p);
+    const w = doc.internal.pageSize.getWidth();
+    const h = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+    doc.setLineWidth(0.2);
+    doc.line(mx, h - 9.5, w - mx, h - 9.5);
+    doc.setFont("Geist", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+    doc.text(SITE, mx, h - 5);
+    doc.text("Gizli · Kurum içi kullanım içindir", w / 2, h - 5, { align: "center" });
+    doc.setFont("Geist", hasBold ? "bold" : "normal");
+    doc.setTextColor(NAVY_DEEP[0], NAVY_DEEP[1], NAVY_DEEP[2]);
+    doc.text(`Sayfa ${p} / ${total}`, w - mx, h - 5, { align: "right" });
+  }
+  doc.setTextColor(0, 0, 0);
+  return total;
+}
+
 /** Para — Geist'te ₺ glifi yok; para birimi kodu ile yazılır. */
 export function money(v: number, currency: string): string {
   const code = currency === "TRY" ? "TL" : currency;
@@ -73,19 +107,23 @@ async function fetchFontB64(path: string): Promise<string> {
   return btoa(binary);
 }
 
-/** jsPDF + autotable + Geist fontları yüklü A4 dikey belge. */
-export async function createPdfDoc() {
-  const [{ default: jsPDF }, autoTableMod, fReg, fBold] = await Promise.all([
-    import("jspdf"),
-    import("jspdf-autotable"),
+/** Belgeye Geist Regular + Bold fontlarını ekler (Türkçe karakter desteği). */
+export async function addGeistFonts(doc: JsPDF) {
+  const [fReg, fBold] = await Promise.all([
     fetchFontB64("/fonts/Geist-Regular.ttf"),
     fetchFontB64("/fonts/Geist-Bold.ttf"),
   ]);
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   doc.addFileToVFS("Geist-Regular.ttf", fReg);
   doc.addFont("Geist-Regular.ttf", "Geist", "normal");
   doc.addFileToVFS("Geist-Bold.ttf", fBold);
   doc.addFont("Geist-Bold.ttf", "Geist", "bold");
+}
+
+/** jsPDF + autotable + Geist fontları yüklü A4 dikey belge. */
+export async function createPdfDoc() {
+  const [{ default: jsPDF }, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  await addGeistFonts(doc);
   return { doc, autoTable: autoTableMod.default };
 }
 
@@ -407,27 +445,14 @@ export function createKit(
   };
 
   /** İç sayfalara üst/alt bilgi (from sayfasından itibaren) */
-  const stampPages = (
-    from: number,
-    headerLeft: string,
-    headerRight: string,
-    footerLeft: string,
-    headerFrom = from
-  ) => {
+  /** Üst bilgi (headerFrom sayfasından itibaren) + standart alt bilgi (tüm sayfalar) */
+  const stampPages = (headerLeft: string, headerRight: string, headerFrom = 2) => {
     const total = doc.getNumberOfPages();
-    for (let p = from; p <= total; p++) {
+    for (let p = headerFrom; p <= total; p++) {
       doc.setPage(p);
-      if (p >= headerFrom) stampHeader(headerLeft, headerRight);
-      stroke(LINE);
-      doc.setLineWidth(0.2);
-      doc.line(ML, 286, PW - MR, 286);
-      font("normal", 7, MUTED);
-      doc.text(footerLeft, ML, 290.5);
-      doc.text("Gizli · Kurum içi kullanım içindir", PW / 2, 290.5, { align: "center" });
-      font("bold", 7, NAVY_DEEP);
-      doc.text(`Sayfa ${p} / ${total}`, PW - MR, 290.5, { align: "right" });
+      stampHeader(headerLeft, headerRight);
     }
-    return total;
+    return stampStandardFooter(doc);
   };
   const stampHeader = (headerLeft: string, headerRight: string) => {
     {

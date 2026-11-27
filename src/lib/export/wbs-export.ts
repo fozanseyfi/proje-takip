@@ -8,6 +8,7 @@
 // import işlemini async fonksiyon içine taşıdık (büyük lib, ~400 KB).
 import type * as XLSXType from "xlsx";
 import { formatDate, toISODate } from "@/lib/utils";
+import { addGeistFonts, stampStandardFooter } from "@/lib/pdf/kit";
 import type { WbsItem } from "@/lib/store/types";
 import type { HierarchicalWeight } from "@/lib/calc/sections";
 import { loadingOverlay } from "@/lib/ui-loading";
@@ -334,7 +335,8 @@ async function _renderWbsToPDF(
     // Yazıcıların yazamadığı kenar boşluğu için margin bırak
     const MARGIN_MM = 10;
     const contentW = pageW - 2 * MARGIN_MM;
-    const contentH = pageH - 2 * MARGIN_MM;
+    // Alt kısım standart alt bilgiye ayrılır
+    const contentH = pageH - MARGIN_MM - 13;
     const pxPerMm = canvas.width / contentW;
     const pageHpx = contentH * pxPerMm;
 
@@ -365,6 +367,8 @@ async function _renderWbsToPDF(
       pageNo++;
     }
 
+    await addGeistFonts(pdf);
+    stampStandardFooter(pdf, { marginX: MARGIN_MM });
     pdf.save(fileName);
   } finally {
     document.body.removeChild(root);
