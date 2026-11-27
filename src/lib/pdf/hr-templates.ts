@@ -1050,14 +1050,14 @@ async function downloadChecklistPDF(config: ChecklistConfig): Promise<void> {
     for (let i = 1; i <= totalPages; i++) {
       pdf.setPage(i);
 
-      pdf.setFillColor(4, 120, 87);
+      pdf.setFillColor(14, 42, 94);
       pdf.rect(0, 0, pageW, headerH, "F");
-      pdf.setFillColor(16, 185, 129);
+      pdf.setFillColor(30, 58, 110);
       pdf.rect(0, headerH - 1.2, pageW, 1.2, "F");
 
       pdf.setFont("Geist", "bold");
       pdf.setFontSize(7);
-      pdf.setTextColor(220, 252, 231);
+      pdf.setTextColor(143, 163, 201);
       pdf.text(chipText, marginX, 7);
 
       pdf.setFont("Geist", "bold");
@@ -1068,7 +1068,7 @@ async function downloadChecklistPDF(config: ChecklistConfig): Promise<void> {
       if (context.projectName) {
         pdf.setFont("Geist", "normal");
         pdf.setFontSize(8);
-        pdf.setTextColor(209, 250, 229);
+        pdf.setTextColor(183, 196, 222);
         pdf.text(context.projectName, marginX, 18.5);
       }
 
@@ -1079,7 +1079,7 @@ async function downloadChecklistPDF(config: ChecklistConfig): Promise<void> {
       if (totalPages > 1) {
         pdf.setFont("Geist", "normal");
         pdf.setFontSize(7.5);
-        pdf.setTextColor(209, 250, 229);
+        pdf.setTextColor(183, 196, 222);
         pdf.text(`Sayfa ${i} / ${totalPages}`, pageW - marginX, 14, { align: "right" });
       }
 
@@ -1351,7 +1351,7 @@ export async function downloadDocumentChecklistPDF(
 
       pdf.setFont("Geist", "bold");
       pdf.setFontSize(7);
-      pdf.setTextColor(220, 252, 231);
+      pdf.setTextColor(143, 163, 201);
       pdf.text("İSTENEN BELGELER", marginX, 7);
 
       pdf.setFont("Geist", "bold");
@@ -1362,7 +1362,7 @@ export async function downloadDocumentChecklistPDF(
       if (context.projectName) {
         pdf.setFont("Geist", "normal");
         pdf.setFontSize(8);
-        pdf.setTextColor(209, 250, 229);
+        pdf.setTextColor(183, 196, 222);
         pdf.text(context.projectName, marginX, 18.5);
       }
 
@@ -1374,7 +1374,7 @@ export async function downloadDocumentChecklistPDF(
       if (totalPages > 1) {
         pdf.setFont("Geist", "normal");
         pdf.setFontSize(7.5);
-        pdf.setTextColor(209, 250, 229);
+        pdf.setTextColor(183, 196, 222);
         pdf.text(`Sayfa ${i} / ${totalPages}`, pageW - marginX, 14, { align: "right" });
       }
 
@@ -1388,8 +1388,8 @@ export async function downloadDocumentChecklistPDF(
 }
 
 const TONE_GRADIENT: Record<HRCategory, { from: string; to: string; chip: string }> = {
-  ozluk: { from: "#7c3aed", to: "#5b21b6", chip: "ÖZLÜK BELGESİ" },
-  isg: { from: "#dc2626", to: "#991b1b", chip: "İSG BELGESİ" },
+  ozluk: { from: "#0e2a5e", to: "#1e3a6e", chip: "ÖZLÜK BELGESİ" },
+  isg: { from: "#0e2a5e", to: "#1e3a6e", chip: "İSG BELGESİ" },
 };
 
 export interface HRDownloadContext {
@@ -1446,19 +1446,6 @@ export async function downloadHRTemplatePDF(
         ${template.body()}
       </div>
 
-      <div style="
-        margin-top: 22px;
-        padding-top: 8px;
-        border-top: 1px dashed #d4d4d8;
-        display: flex;
-        justify-content: space-between;
-        font-size: 8.5px;
-        color: #a1a1aa;
-        font-family: 'JetBrains Mono', ui-monospace, monospace;
-      ">
-        <span>${escapeHtml(context.projectName ?? "")} · proje-yonetim-platformu</span>
-        <span>${today} · ${template.id}</span>
-      </div>
     </div>
   `;
 

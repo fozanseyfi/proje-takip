@@ -255,18 +255,18 @@ async function _renderWbsToPDF(
     }
     // L1 — ana başlık (lacivert, büyük bold)
     if (w.level === 1) {
-      return `<tr style="background:#1e3a8a;color:#ffffff;">
-        <td style="padding:11px 12px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:800;width:75px;border-bottom:1px solid #1e3a8a;">${escapeHtml(w.code)}</td>
-        <td colspan="3" style="padding:11px 12px;font-size:14px;font-weight:800;letter-spacing:0.2px;text-transform:uppercase;border-bottom:1px solid #1e3a8a;">${escapeHtml(w.name)}</td>
-        <td style="padding:11px 12px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:800;width:75px;border-bottom:1px solid #1e3a8a;">${escapeHtml(pct)}</td>
+      return `<tr style="background:#0e2a5e;color:#ffffff;">
+        <td style="padding:11px 12px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:800;width:75px;border-bottom:1px solid #0e2a5e;">${escapeHtml(w.code)}</td>
+        <td colspan="3" style="padding:11px 12px;font-size:14px;font-weight:800;letter-spacing:0.2px;text-transform:uppercase;border-bottom:1px solid #0e2a5e;">${escapeHtml(w.name)}</td>
+        <td style="padding:11px 12px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:800;width:75px;border-bottom:1px solid #0e2a5e;">${escapeHtml(pct)}</td>
       </tr>`;
     }
     // L2 — alt başlık (açık mavi, orta bold)
     if (w.level === 2) {
-      return `<tr style="background:#dbeafe;color:#1e3a8a;">
-        <td style="padding:9px 12px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;width:75px;border-bottom:1px solid #93c5fd;">${escapeHtml(w.code)}</td>
-        <td colspan="3" style="padding:9px 12px;font-size:12.5px;font-weight:700;border-bottom:1px solid #93c5fd;">${escapeHtml(w.name)}</td>
-        <td style="padding:9px 12px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;font-weight:700;width:75px;border-bottom:1px solid #93c5fd;">${escapeHtml(pct)}</td>
+      return `<tr style="background:#f5f7fa;color:#0e2a5e;">
+        <td style="padding:9px 12px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;width:75px;border-bottom:1px solid #d9e0ec;">${escapeHtml(w.code)}</td>
+        <td colspan="3" style="padding:9px 12px;font-size:12.5px;font-weight:700;border-bottom:1px solid #d9e0ec;">${escapeHtml(w.name)}</td>
+        <td style="padding:9px 12px;text-align:right;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;font-weight:700;width:75px;border-bottom:1px solid #d9e0ec;">${escapeHtml(pct)}</td>
       </tr>`;
     }
     // L3 — iş kalemi (yaprak, stripe)
@@ -286,7 +286,7 @@ async function _renderWbsToPDF(
 
   root.innerHTML = `
     <div style="padding:22px;">
-      <div style="background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:white;padding:18px 22px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="background:#0e2a5e;color:white;padding:18px 22px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <div>
           <div style="font-size:19px;font-weight:800;letter-spacing:-0.3px;line-height:1.1;">WBS YAPISI</div>
           <div style="font-size:11px;font-weight:500;opacity:0.92;margin-top:5px;">${rows.length} satır · ${leafCount} iş kalemi</div>
@@ -299,7 +299,7 @@ async function _renderWbsToPDF(
 
       <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;">
         <thead>
-          <tr style="background:#0f172a;color:white;">
+          <tr style="background:#ffffff;color:#0e2a5e;border-bottom:2px solid #0e2a5e;">
             <th style="padding:8px 12px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;width:75px;">Kod</th>
             <th style="padding:8px 12px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Ad</th>
             <th style="padding:8px 12px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Disiplin</th>
@@ -310,10 +310,6 @@ async function _renderWbsToPDF(
         <tbody>${bodyHtml}</tbody>
       </table>
 
-      <div style="margin-top:18px;padding-top:10px;border-top:1px dashed #d4d4d8;display:flex;justify-content:space-between;font-size:8.5px;color:#a1a1aa;font-family:'JetBrains Mono',ui-monospace,monospace;">
-        <span>${escapeHtml(projectName)} · proje-yonetim-platformu</span>
-        <span>${today}</span>
-      </div>
     </div>
   `;
 

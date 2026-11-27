@@ -45,7 +45,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn, formatDate, toISODate } from "@/lib/utils";
-import { addGeistFonts, stampStandardFooter } from "@/lib/pdf/kit";
+import { addGeistFonts, drawReportBand, stampStandardFooter } from "@/lib/pdf/kit";
 import { computeSchedule, getPlanRange, type LeafSchedule } from "@/lib/calc/predecessors";
 import { computeDurationRanges } from "@/lib/calc/duration-ranges";
 import { BigGantt, type TimelineRow } from "@/components/timeline/big-gantt";
@@ -232,10 +232,11 @@ export default function TimelinePage() {
         el.style.width = prev.width;
 
         const pdf = new jsPDF("landscape", "mm", "a3");
+        await addGeistFonts(pdf);
         const pageW = pdf.internal.pageSize.getWidth();
         const pageH = pdf.internal.pageSize.getHeight();
         const margin = 10;
-        const headerH = 14;
+        const headerH = 40 + 6 - margin; // lacivert antet (40 mm) + boşluk
         const availW = pageW - margin * 2;
         const availH = pageH - margin - headerH - 12; // alt bilgi payı
         const pxPerMm = canvas.width / availW;
@@ -244,14 +245,15 @@ export default function TimelinePage() {
         const imgData = canvas.toDataURL("image/png");
 
         const drawHeader = (subtitle: string) => {
-          pdf.setFontSize(16);
-          pdf.setFont("helvetica", "bold");
-          pdf.text(project.name, margin, margin);
-          pdf.setFontSize(10);
-          pdf.setFont("helvetica", "normal");
-          pdf.text(subtitle, margin, margin + 5);
+          drawReportBand(pdf, {
+            eyebrow: `Timeline & Gantt  ·  ${useBaseline ? "Baseline" : "Güncel Plan"}`,
+            title: project.name,
+            subtitle,
+            rightTop: `Rapor: ${formatDate(project.reportDate)}`,
+            marginX: margin,
+          });
         };
-        const baseSubtitle = `Timeline (${useBaseline ? "Baseline" : "Güncel Plan"}) · ${formatDate(project.startDate)} -> ${formatDate(project.plannedEnd)} · Rapor: ${formatDate(project.reportDate)}`;
+        const baseSubtitle = `${formatDate(project.startDate)} – ${formatDate(project.plannedEnd)}${project.location ? `   ·   ${project.location}` : ""}`;
 
         if (imgHmm <= availH) {
           drawHeader(baseSubtitle);
@@ -277,7 +279,6 @@ export default function TimelinePage() {
             pdf.addImage(sliceData, "PNG", margin, margin + headerH, imgWmm, sliceHmmActual);
           }
         }
-        await addGeistFonts(pdf);
         stampStandardFooter(pdf, { marginX: margin });
         const fileName = `${project.name.replace(/\s+/g, "-")}-Timeline-${useBaseline ? "Baseline" : "Plan"}-${toISODate(new Date())}.pdf`;
         pdf.save(fileName);

@@ -858,29 +858,8 @@ export default function PlanningPage() {
   async function exportPlanSummaryPdf() {
     if (!project) return;
     try {
-      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
-        import("jspdf"),
-        import("jspdf-autotable"),
-      ]);
-      const autoTable = autoTableMod.default;
-
-      // Geist Regular TTF'i public klasöründen çek (Türkçe destekli Unicode font)
-      const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-      if (!fontResp.ok) throw new Error("Font yüklenemedi");
-      const fontBuf = await fontResp.arrayBuffer();
-      // ArrayBuffer → base64 (büyük dosyalar için chunked)
-      const fontB64 = (() => {
-        const bytes = new Uint8Array(fontBuf);
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(
-            null,
-            Array.from(bytes.subarray(i, i + chunk))
-          );
-        }
-        return btoa(binary);
-      })();
+      const kit = await import("@/lib/pdf/kit");
+      const { doc: pdf, autoTable } = await kit.createPdfDoc();
 
       const all = wbs
         .filter((w) => !w.deletedAt)
@@ -951,189 +930,41 @@ export default function PlanningPage() {
         ]);
       }
 
-      // jsPDF (A4 portrait)
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-
-      // Geist'i kaydet ve aktif yap — autoTable artık Türkçe karakter renderlar
-      pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-      pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-      pdf.addFont("Geist-Regular.ttf", "Geist", "bold"); // synthetic bold
-      pdf.setFont("Geist", "normal");
-
-      const pageW = pdf.internal.pageSize.getWidth();
-      const marginX = 8;
-      const availW = pageW - marginX * 2;
-
-      // ───── BRAND GREEN HEADER — plan-status PDF ile aynı stil ─────
-      const headerX = marginX;
-      const headerY = marginX;
-      const headerW = availW;
-      const headerH = 56;
-
-      // Smooth gradient brand-700 #047857 → brand-500 #10b981
-      const strips = 240;
-      const stripW = headerW / strips;
-      const c1 = { r: 4, g: 120, b: 87 };
-      const c2 = { r: 16, g: 185, b: 129 };
-      for (let i = 0; i < strips; i++) {
-        const t = i / (strips - 1);
-        const r = Math.round(c1.r + (c2.r - c1.r) * t);
-        const g = Math.round(c1.g + (c2.g - c1.g) * t);
-        const b = Math.round(c1.b + (c2.b - c1.b) * t);
-        pdf.setFillColor(r, g, b);
-        pdf.rect(headerX + i * stripW, headerY, stripW + 0.2, headerH, "F");
-      }
-
-      // Dekoratif daireler — clip + opacity ile subtle profesyonel görünüm
-      pdf.saveGraphicsState();
-      pdf.rect(headerX, headerY, headerW, headerH);
-      pdf.clip();
-      pdf.discardPath();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfAny = pdf as any;
-      pdfAny.setGState(new pdfAny.GState({ opacity: 0.18 }));
-      pdf.setFillColor(4, 78, 56); // brand-800
-      pdf.circle(headerX + headerW - 4, headerY + 4, 28, "F");
-      pdf.circle(headerX + headerW * 0.78, headerY + headerH + 2, 18, "F");
-      pdfAny.setGState(new pdfAny.GState({ opacity: 1 }));
-      pdf.restoreGraphicsState();
-
-      // Sol üst rozet
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("PLAN ÖZETİ  ·  ZAMAN ÇİZELGESİ", headerX + 7, headerY + 8);
-      pdf.setDrawColor(220, 252, 231);
-      pdf.setLineWidth(0.2);
-      pdf.line(headerX + 7, headerY + 9.2, headerX + 56, headerY + 9.2);
-
-      // Büyük proje adı
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(28);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(project.name, headerX + 7, headerY + 21);
-
-      // Rapor tarihi (bugün)
-      const aylar = [
-        "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-      ];
-      const today = new Date();
-      const todayTr = `${today.getDate()} ${aylar[today.getMonth()]} ${today.getFullYear()}`;
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`Rapor günü: ${todayTr}`, headerX + 7, headerY + 26);
-
-      // Sağ üst — TOPLAM KALEM
+      const marginX = kit.ML;
       const leafCount = wbs.filter((w) => w.isLeaf && !w.deletedAt).length;
       const groupCount = wbs.filter((w) => !w.isLeaf && !w.deletedAt && w.level >= 1).length;
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("TOPLAM KALEM", headerX + headerW - 7, headerY + 8, { align: "right" });
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(32);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(String(leafCount), headerX + headerW - 7, headerY + 22, { align: "right" });
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`${groupCount} grup`, headerX + headerW - 7, headerY + 27, { align: "right" });
-
-      // Alt 4'lü mini info kartları
-      const cardY = headerY + 32;
-      const cardH = 18;
-      const cardCount = 4;
-      const cardGap = 2.5;
-      const cardW = (headerW - 14 - cardGap * (cardCount - 1)) / cardCount;
-      const cards = [
-        { label: "LOKASYON", value: project.location || "—" },
-        {
-          label: "DC GÜÇ",
-          value: project.installedCapacityMw
-            ? `${project.installedCapacityMw.toFixed(2).replace(".", ",")} MWp`
-            : "—",
-        },
-        { label: "PROJE BAŞL.", value: formatDate(project.startDate) },
-        { label: "PROJE BİTİŞ", value: formatDate(project.plannedEnd) },
-      ];
-      cards.forEach((c, i) => {
-        const cx = headerX + 7 + i * (cardW + cardGap);
-        pdf.setFillColor(2, 44, 34); // #022c22 derin yeşil
-        pdf.roundedRect(cx, cardY, cardW, cardH, 1.8, 1.8, "F");
-        pdf.setDrawColor(110, 231, 183);
-        pdf.setLineWidth(0.25);
-        pdf.line(cx + 3, cardY + 6.5, cx + 6.5, cardY + 6.5);
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(6);
-        pdf.setTextColor(167, 243, 208);
-        pdf.text(c.label, cx + 3, cardY + 5.5);
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(11);
-        pdf.setTextColor(255, 255, 255);
-        const maxW = cardW - 6;
-        const val = c.value;
-        if (pdf.getTextWidth(val) > maxW) {
-          let fs = 11;
-          while (fs > 7 && pdf.getTextWidth(val) > maxW) {
-            fs -= 0.5;
-            pdf.setFontSize(fs);
-          }
-        }
-        pdf.text(val, cx + 3, cardY + 13);
+      const bandH = kit.drawReportBand(pdf, {
+        eyebrow: "Plan Özeti  ·  Zaman Çizelgesi",
+        title: project.name,
+        subtitle: [
+          project.location,
+          project.installedCapacityMw ? `${formatNumber(project.installedCapacityMw, 2)} MWp` : "",
+          `${formatDate(project.startDate)} – ${formatDate(project.plannedEnd)}`,
+        ]
+          .filter(Boolean)
+          .join("   ·   "),
+        rightTop: `Rapor günü: ${formatDate(toISODate(new Date()))}`,
+        rightBig: String(leafCount),
+        rightSub: `iş kalemi · ${groupCount} grup`,
       });
 
-      pdf.setTextColor(0, 0, 0);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.2);
-
       autoTable(pdf, {
-        startY: headerY + headerH + 5,
+        ...kit.corporateTable(8.6),
+        startY: bandH + 6,
         margin: { left: marginX, right: marginX, top: 14, bottom: 13 },
-        head: [["Kod", "Ad", "Süre", "Başlangıç", "Bitiş"]],
+        head: [["Kod", "İş Kalemi", "Süre", "Başlangıç", "Bitiş"]],
         body,
-        styles: {
-          font: "Geist",
-          fontSize: 9,
-          cellPadding: { top: 2.4, right: 3, bottom: 2.4, left: 3 },
-          overflow: "linebreak",
-          valign: "middle",
-          lineColor: [220, 220, 230],
-          lineWidth: 0.1,
-          textColor: [15, 23, 42],
-        },
-        headStyles: {
-          fillColor: [4, 120, 87], // brand-700 platform yeşili
-          textColor: 255,
-          fontStyle: "bold",
-          fontSize: 9,
-        },
         columnStyles: {
-          0: { cellWidth: 22, fontStyle: "bold", halign: "left", overflow: "visible" },
-          1: { cellWidth: pageW - marginX * 2 - 22 - 22 - 26 - 26 },
-          2: { cellWidth: 22, halign: "right", overflow: "visible" },
-          3: { cellWidth: 26, halign: "left", overflow: "visible" },
-          4: { cellWidth: 26, halign: "left", overflow: "visible" },
+          0: { cellWidth: 22, halign: "left" },
+          1: { cellWidth: kit.CW - 22 - 22 - 26 - 26 },
+          2: { cellWidth: 22, halign: "right" },
+          3: { cellWidth: 26, halign: "left" },
+          4: { cellWidth: 26, halign: "left" },
         },
         didParseCell: (data) => {
           if (data.section !== "body") return;
           const meta = rowMeta[data.row.index];
-          if (!meta) return;
-          if (meta.isTotal) {
-            data.cell.styles.fillColor = [6, 78, 59]; // brand-800 koyu yeşil
-            data.cell.styles.textColor = [255, 255, 255];
-            data.cell.styles.fontStyle = "bold";
-            data.cell.styles.fontSize = 10;
-          } else if (meta.level === 1) {
-            data.cell.styles.fillColor = [220, 252, 231]; // emerald-100
-            data.cell.styles.textColor = [4, 120, 87];    // brand-700
-            data.cell.styles.fontStyle = "bold";
-          } else if (meta.level === 2) {
-            data.cell.styles.fillColor = [236, 253, 245]; // emerald-50
-            data.cell.styles.textColor = [5, 150, 105];   // brand-600
-            data.cell.styles.fontStyle = "bold";
-          }
+          if (meta) kit.levelRowStyle(data.cell.styles, meta.level, meta.isTotal);
         },
       });
 

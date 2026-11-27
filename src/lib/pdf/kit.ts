@@ -83,6 +83,143 @@ export function stampStandardFooter(doc: JsPDF, opts: { marginX?: number; from?:
   return total;
 }
 
+/**
+ * Standart lacivert antet (1. sayfa üstü, tam genişlik). Dikey/yatay her sayfa
+ * boyutunda çalışır. Dönen değer: antetin alt kenarı (mm) — içerik buradan +6 başlar.
+ */
+export function drawReportBand(
+  doc: JsPDF,
+  o: {
+    eyebrow: string;
+    title: string;
+    subtitle?: string;
+    rightTop?: string;
+    rightBig?: string;
+    rightSub?: string;
+    marginX?: number;
+  }
+): number {
+  const mx = o.marginX ?? ML;
+  const w = doc.internal.pageSize.getWidth();
+  const BAND = 40;
+  doc.setFillColor(NAVY_DEEP[0], NAVY_DEEP[1], NAVY_DEEP[2]);
+  doc.rect(0, 0, w, BAND, "F");
+  doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+  doc.rect(0, BAND - 1.6, w, 1.6, "F");
+  const fonts = doc.getFontList() as Record<string, string[]>;
+  const bold = (fonts["Geist"] ?? []).includes("bold") ? "bold" : "normal";
+  doc.setFont("Geist", bold);
+  doc.setFontSize(7.5);
+  doc.setTextColor(143, 163, 201);
+  doc.text(o.eyebrow.toLocaleUpperCase("tr-TR"), mx, 13, { charSpace: 0.7 });
+  if (o.rightTop) {
+    doc.setFont("Geist", "normal");
+    doc.text(o.rightTop, w - mx, 13, { align: "right" });
+  }
+  doc.setFont("Geist", bold);
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text(doc.splitTextToSize(o.title, w - mx * 2 - 50)[0] as string, mx, 24);
+  if (o.rightBig) {
+    doc.setFontSize(15);
+    doc.text(o.rightBig, w - mx, 24, { align: "right" });
+  }
+  doc.setFont("Geist", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(183, 196, 222);
+  if (o.subtitle) doc.text(doc.splitTextToSize(o.subtitle, w - mx * 2 - 60)[0] as string, mx, 31.5);
+  if (o.rightSub) doc.text(o.rightSub, w - mx, 31.5, { align: "right" });
+  doc.setTextColor(0, 0, 0);
+  return BAND;
+}
+
+/**
+ * Gösterge kartları — sayfa genişliğine yayılır (dikey/yatay). Dönen değer: kartların alt kenarı.
+ */
+export function statCards(
+  doc: JsPDF,
+  items: { label: string; value: string; sub?: string; tone?: RGB }[],
+  y: number,
+  marginX = ML
+): number {
+  const w = doc.internal.pageSize.getWidth() - marginX * 2;
+  const gap = 3;
+  const cw = (w - gap * (items.length - 1)) / items.length;
+  const h = items.some((i) => i.sub) ? 19 : 15;
+  const fonts = doc.getFontList() as Record<string, string[]>;
+  const bold = (fonts["Geist"] ?? []).includes("bold") ? "bold" : "normal";
+  items.forEach((it, i) => {
+    const cx = marginX + i * (cw + gap);
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+    doc.setLineWidth(0.25);
+    doc.roundedRect(cx, y, cw, h, 1.2, 1.2, "S");
+    doc.setFont("Geist", bold);
+    doc.setFontSize(6.8);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+    doc.text(it.label.toLocaleUpperCase("tr-TR"), cx + 3, y + 5, { charSpace: 0.2 });
+    const t = it.tone ?? NAVY_DEEP;
+    doc.setTextColor(t[0], t[1], t[2]);
+    let fs = 13;
+    doc.setFontSize(fs);
+    while (fs > 7 && doc.getTextWidth(it.value) > cw - 6) doc.setFontSize((fs -= 0.5));
+    doc.text(it.value, cx + 3, y + 11.8);
+    if (it.sub) {
+      doc.setFont("Geist", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+      doc.text(doc.splitTextToSize(it.sub, cw - 6)[0] as string, cx + 3, y + 16.4);
+    }
+  });
+  doc.setTextColor(0, 0, 0);
+  return y + h;
+}
+
+/** autoTable için kurumsal tablo stili (lacivert başlık çizgisi, ince satır çizgileri). */
+export function corporateTable(fontSize = 8.4) {
+  return {
+    theme: "plain" as const,
+    styles: {
+      font: "Geist",
+      fontSize,
+      textColor: INK,
+      cellPadding: { top: 1.9, bottom: 1.9, left: 2, right: 2 },
+      lineColor: LINE,
+      lineWidth: { bottom: 0.15 },
+      valign: "middle" as const,
+      overflow: "linebreak" as const,
+    },
+    headStyles: {
+      fontStyle: "bold" as const,
+      textColor: NAVY_DEEP,
+      fillColor: false as never,
+      lineColor: NAVY_DEEP,
+      lineWidth: { bottom: 0.45 },
+      fontSize: Math.max(6.5, fontSize - 0.6),
+    },
+    alternateRowStyles: { fillColor: [250, 251, 253] as RGB },
+  };
+}
+
+/** WBS seviyesine göre satır vurgusu (toplam / L1 / L2) — kurumsal palet. */
+export function levelRowStyle(
+  styles: { fillColor?: unknown; textColor?: unknown; fontStyle?: unknown; fontSize?: number },
+  level: number,
+  isTotal = false
+) {
+  if (isTotal) {
+    styles.fillColor = NAVY_DEEP;
+    styles.textColor = WHITE;
+    styles.fontStyle = "bold";
+  } else if (level === 1) {
+    styles.fillColor = SOFT;
+    styles.textColor = NAVY_DEEP;
+    styles.fontStyle = "bold";
+  } else if (level === 2) {
+    styles.textColor = NAVY;
+    styles.fontStyle = "bold";
+  }
+}
+
 /** Para — Geist'te ₺ glifi yok; para birimi kodu ile yazılır. */
 export function money(v: number, currency: string): string {
   const code = currency === "TRY" ? "TL" : currency;
@@ -120,9 +257,9 @@ export async function addGeistFonts(doc: JsPDF) {
 }
 
 /** jsPDF + autotable + Geist fontları yüklü A4 dikey belge. */
-export async function createPdfDoc() {
+export async function createPdfDoc(orientation: "portrait" | "landscape" = "portrait", format: "a4" | "a3" = "a4") {
   const [{ default: jsPDF }, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation, unit: "mm", format });
   await addGeistFonts(doc);
   return { doc, autoTable: autoTableMod.default };
 }

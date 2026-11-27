@@ -105,158 +105,31 @@ export default function ProcurementPage() {
   async function exportPdf() {
     if (!project) return;
     try {
-      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
-        import("jspdf"),
-        import("jspdf-autotable"),
-      ]);
-      const autoTable = autoTableMod.default;
-
-      // Geist Regular TTF
-      const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-      if (!fontResp.ok) throw new Error("Font yüklenemedi");
-      const fontBuf = await fontResp.arrayBuffer();
-      const fontB64 = (() => {
-        const bytes = new Uint8Array(fontBuf);
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(
-            null,
-            Array.from(bytes.subarray(i, i + chunk))
-          );
-        }
-        return btoa(binary);
-      })();
-
-      // A4 LANDSCAPE — daha geniş sütun alanı için
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-      pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-      pdf.addFont("Geist-Regular.ttf", "Geist", "bold");
-      pdf.setFont("Geist", "normal");
-
-      const pageW = pdf.internal.pageSize.getWidth();
-      const marginX = 8;
-      const availW = pageW - marginX * 2;
-
-      // ───── BRAND-GREEN HEADER ─────
-      const headerX = marginX;
-      const headerY = marginX;
-      const headerW = availW;
-      const headerH = 56;
-
-      // Smooth gradient brand-700 → brand-500
-      const strips = 240;
-      const stripW = headerW / strips;
-      const c1 = { r: 4, g: 120, b: 87 };
-      const c2 = { r: 16, g: 185, b: 129 };
-      for (let i = 0; i < strips; i++) {
-        const t = i / (strips - 1);
-        const r = Math.round(c1.r + (c2.r - c1.r) * t);
-        const g = Math.round(c1.g + (c2.g - c1.g) * t);
-        const b = Math.round(c1.b + (c2.b - c1.b) * t);
-        pdf.setFillColor(r, g, b);
-        pdf.rect(headerX + i * stripW, headerY, stripW + 0.2, headerH, "F");
-      }
-
-      // Dekoratif daireler (clip + opacity)
-      pdf.saveGraphicsState();
-      pdf.rect(headerX, headerY, headerW, headerH);
-      pdf.clip();
-      pdf.discardPath();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfAny = pdf as any;
-      pdfAny.setGState(new pdfAny.GState({ opacity: 0.18 }));
-      pdf.setFillColor(4, 78, 56);
-      pdf.circle(headerX + headerW - 4, headerY + 4, 28, "F");
-      pdf.circle(headerX + headerW * 0.78, headerY + headerH + 2, 18, "F");
-      pdfAny.setGState(new pdfAny.GState({ opacity: 1 }));
-      pdf.restoreGraphicsState();
-
-      // Sol üst rozet
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("PROCUREMENT  ·  SATIN ALMA RAPORU", headerX + 7, headerY + 8);
-      pdf.setDrawColor(220, 252, 231);
-      pdf.setLineWidth(0.2);
-      pdf.line(headerX + 7, headerY + 9.2, headerX + 60, headerY + 9.2);
-
-      // Proje adı
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(28);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(project.name, headerX + 7, headerY + 21);
-
-      const aylar = [
-        "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
-      ];
-      const today = new Date();
-      const todayTr = `${today.getDate()} ${aylar[today.getMonth()]} ${today.getFullYear()}`;
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`Rapor günü: ${todayTr}`, headerX + 7, headerY + 26);
-
-      // Sağ üst — TOPLAM KALEM
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("TOPLAM KALEM", headerX + headerW - 7, headerY + 8, { align: "right" });
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(32);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(String(items.length), headerX + headerW - 7, headerY + 22, { align: "right" });
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(209, 250, 229);
-      pdf.text(`${criticalCount} kritik`, headerX + headerW - 7, headerY + 27, { align: "right" });
-
-      // Alt 4'lü info kartları — KPI özeti
-      const cardY = headerY + 32;
-      const cardH = 18;
-      const cardCount = 4;
-      const cardGap = 2.5;
-      const cardW = (headerW - 14 - cardGap * (cardCount - 1)) / cardCount;
-      const totalLine = kpis.activeCurrencies
-        .map((c) => `${formatMoney(kpis.totalsByCurrency.planned[c], c, 0)}`)
-        .join(" · ") || "—";
-      const cards = [
-        { label: "GECİKME (TESLİM)", value: `${kpis.deliveryLateCount} kalem${kpis.deliveryMaxDays > 0 ? ` · +${kpis.deliveryMaxDays}g` : ""}` },
-        { label: "GECİKME (PO)", value: `${kpis.poLateCount} kalem${kpis.poMaxDays > 0 ? ` · +${kpis.poMaxDays}g` : ""}` },
-        { label: "TESLİM EDİLEN", value: `${kpis.delivered} / ${kpis.total}` },
-        { label: "TOPLAM BEDEL", value: totalLine },
-      ];
-      cards.forEach((c, i) => {
-        const cx = headerX + 7 + i * (cardW + cardGap);
-        pdf.setFillColor(2, 44, 34);
-        pdf.roundedRect(cx, cardY, cardW, cardH, 1.8, 1.8, "F");
-        pdf.setDrawColor(110, 231, 183);
-        pdf.setLineWidth(0.25);
-        pdf.line(cx + 3, cardY + 6.5, cx + 6.5, cardY + 6.5);
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(6);
-        pdf.setTextColor(167, 243, 208);
-        pdf.text(c.label, cx + 3, cardY + 5.5);
-        pdf.setFont("Geist", "bold");
-        pdf.setFontSize(10);
-        pdf.setTextColor(255, 255, 255);
-        const val = c.value;
-        const maxW = cardW - 6;
-        if (pdf.getTextWidth(val) > maxW) {
-          let fs = 10;
-          while (fs > 6 && pdf.getTextWidth(val) > maxW) {
-            fs -= 0.5;
-            pdf.setFontSize(fs);
-          }
-        }
-        pdf.text(val, cx + 3, cardY + 13);
+      const kit = await import("@/lib/pdf/kit");
+      const { doc: pdf, autoTable } = await kit.createPdfDoc("landscape");
+      const marginX = kit.ML;
+      const criticalCount = items.filter((it) => it.isCritical).length;
+      const bandH = kit.drawReportBand(pdf, {
+        eyebrow: "Procurement  ·  Satın Alma Raporu",
+        title: project.name,
+        subtitle: [project.location, `${formatDate(project.startDate)} – ${formatDate(project.plannedEnd)}`].filter(Boolean).join("   ·   "),
+        rightTop: `Rapor günü: ${formatDate(toISODate(new Date()))}`,
+        rightBig: String(items.length),
+        rightSub: `kalem · ${criticalCount} kritik`,
       });
-
-      pdf.setTextColor(0, 0, 0);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.2);
+      const totalLine =
+        kpis.activeCurrencies.map((c) => kit.money(kpis.totalsByCurrency.planned[c], c)).join(" · ") || "—";
+      const cardsBottom = kit.statCards(
+        pdf,
+        [
+          { label: "Gecikme (Teslim)", value: `${kpis.deliveryLateCount} kalem${kpis.deliveryMaxDays > 0 ? ` · +${kpis.deliveryMaxDays}g` : ""}`, tone: kpis.deliveryLateCount > 0 ? kit.BAD : undefined },
+          { label: "Gecikme (PO)", value: `${kpis.poLateCount} kalem${kpis.poMaxDays > 0 ? ` · +${kpis.poMaxDays}g` : ""}`, tone: kpis.poLateCount > 0 ? kit.WARN : undefined },
+          { label: "Teslim Edilen", value: `${kpis.delivered} / ${kpis.total}` },
+          { label: "Toplam Bedel", value: totalLine },
+        ],
+        bandH + 6,
+        marginX
+      );
 
       // ───── TABLO ─────
       type ProcRowData = {
@@ -288,12 +161,12 @@ export default function ProcurementPage() {
           return formatDate(p ?? a!);
         };
         return {
-          crit: it.isCritical ? "★" : "",
+          crit: it.isCritical ? "●" : "",
           material: it.material,
           supplier: it.supplier ?? "—",
-          plan: formatMoney(plannedTotal, it.currency, 0),
+          plan: kit.money(plannedTotal, it.currency),
           gercek: actualTotal != null
-            ? formatMoney(actualTotal, it.actualCurrency ?? it.currency, 0)
+            ? kit.money(actualTotal, it.actualCurrency ?? it.currency)
             : "—",
           po: fmtDate(plannedPo, actualPo),
           exw: fmtDate(plannedExw, actualExw),
@@ -303,32 +176,16 @@ export default function ProcurementPage() {
       });
 
       autoTable(pdf, {
-        startY: headerY + headerH + 5,
+        ...kit.corporateTable(8),
+        startY: cardsBottom + 6,
         margin: { left: marginX, right: marginX, top: 14, bottom: 13 },
         head: [["", "Malzeme", "Tedarikçi", "Plan", "Gerçek", "PO", "EXW", "Teslim", "Durum"]],
         body: body.map((r) => [
           r.crit, r.material, r.supplier, r.plan, r.gercek, r.po, r.exw, r.teslim, r.durum,
         ]),
-        styles: {
-          font: "Geist",
-          fontSize: 8,
-          cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
-          overflow: "linebreak",
-          valign: "middle",
-          lineColor: [220, 220, 230],
-          lineWidth: 0.15,
-          textColor: [15, 23, 42],
-        },
-        headStyles: {
-          fillColor: [4, 120, 87],
-          textColor: 255,
-          fontStyle: "bold",
-          fontSize: 8.5,
-          halign: "center",
-        },
         columnStyles: {
-          0: { cellWidth: 6, halign: "center", textColor: [217, 119, 6] },
-          1: { cellWidth: 65, halign: "left", fontStyle: "bold" },
+          0: { cellWidth: 6, halign: "center", textColor: kit.BAD },
+          1: { cellWidth: 60, halign: "left", fontStyle: "bold" },
           2: { cellWidth: 40, halign: "left" },
           3: { cellWidth: 28, halign: "right", fontStyle: "bold", overflow: "visible" },
           4: { cellWidth: 28, halign: "right", fontStyle: "bold", overflow: "visible" },

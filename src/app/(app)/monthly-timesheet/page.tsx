@@ -578,69 +578,22 @@ export default function MonthlyTimesheetPage() {
   async function exportPdf() {
     if (!project) return;
     try {
-      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
-        import("jspdf"),
-        import("jspdf-autotable"),
-      ]);
-      const autoTable = autoTableMod.default;
-      const fontResp = await fetch("/fonts/Geist-Regular.ttf");
-      if (!fontResp.ok) throw new Error("Font yüklenemedi");
-      const fontBuf = await fontResp.arrayBuffer();
-      const fontB64 = (() => {
-        const bytes = new Uint8Array(fontBuf);
-        let binary = "";
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(
-            null,
-            Array.from(bytes.subarray(i, i + chunk))
-          );
-        }
-        return btoa(binary);
-      })();
-
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      pdf.addFileToVFS("Geist-Regular.ttf", fontB64);
-      pdf.addFont("Geist-Regular.ttf", "Geist", "normal");
-      pdf.addFont("Geist-Regular.ttf", "Geist", "bold");
-      pdf.setFont("Geist", "normal");
-
+      const kit = await import("@/lib/pdf/kit");
+      const { doc: pdf, autoTable } = await kit.createPdfDoc("landscape");
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const marginX = 6;
 
-      // ─── HEADER ───
-      const headerH = 22;
-      // Gradient — brand-700 → brand-500
-      const strips = 200;
-      const stripW = (pageW - marginX * 2) / strips;
-      for (let i = 0; i < strips; i++) {
-        const t = i / (strips - 1);
-        const r = Math.round(4 + (16 - 4) * t);
-        const g = Math.round(120 + (185 - 120) * t);
-        const b = Math.round(87 + (129 - 87) * t);
-        pdf.setFillColor(r, g, b);
-        pdf.rect(marginX + i * stripW, marginX, stripW + 0.2, headerH, "F");
-      }
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text("AYLIK PUANTAJ", marginX + 5, marginX + 6);
-      pdf.setFont("Geist", "bold");
-      pdf.setFontSize(15);
-      pdf.setTextColor(255, 255, 255);
-      pdf.text(project.name, marginX + 5, marginX + 13);
-      pdf.setFont("Geist", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(220, 252, 231);
-      pdf.text(
-        `${TR_MONTHS[month0]} ${year}  ·  ${tab === "personnel" ? "Personel" : "Makine"}${filterCompany ? "  ·  " + filterCompany : ""}`,
-        marginX + 5,
-        marginX + 19
-      );
-      pdf.setTextColor(0, 0, 0);
-
-      const tableStartY = marginX + headerH + 4;
+      // ─── Antet (kurumsal format) ───
+      const bandH = kit.drawReportBand(pdf, {
+        eyebrow: "Aylık Puantaj",
+        title: project.name,
+        subtitle: `${TR_MONTHS[month0]} ${year}  ·  ${tab === "personnel" ? "Personel" : "Makine"}${filterCompany ? "  ·  " + filterCompany : ""}`,
+        rightTop: `Rapor günü: ${formatDate(localISO(new Date()))}`,
+        rightBig: `${TR_MONTHS[month0]} ${year}`,
+        marginX: 10,
+      });
+      const tableStartY = bandH + 5;
 
       // Sütun başlıkları
       const dayCols = days.map((d) => ({
@@ -713,7 +666,7 @@ export default function MonthlyTimesheetPage() {
             { content: String(r.payroll.raporDays), styles: { halign: "right" } },
             {
               content: formatMoney(r.payroll.tutar, (r.p.dailyRateCurrency ?? "TRY") as Currency, 0),
-              styles: { halign: "right", fontStyle: "bold", textColor: [4, 120, 87] },
+              styles: { halign: "right", fontStyle: "bold", textColor: kit.NAVY_DEEP },
             },
           ];
           bodyRows.push(row);
@@ -757,7 +710,7 @@ export default function MonthlyTimesheetPage() {
             { content: "—", styles: { halign: "right" } },
             {
               content: formatMoney(r.payroll.tutar, (r.m.dailyRateCurrency ?? "TRY") as Currency, 0),
-              styles: { halign: "right", fontStyle: "bold", textColor: [4, 120, 87] },
+              styles: { halign: "right", fontStyle: "bold", textColor: kit.NAVY_DEEP },
             },
           ];
           bodyRows.push(row);
@@ -813,7 +766,7 @@ export default function MonthlyTimesheetPage() {
           textColor: [15, 23, 42],
         },
         headStyles: {
-          fillColor: [30, 41, 59],
+          fillColor: kit.NAVY_DEEP,
           textColor: 255,
           fontStyle: "bold",
           fontSize: 6,

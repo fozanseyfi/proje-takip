@@ -246,7 +246,7 @@ export default function RealizationPage() {
     const html = `
       <div style="padding: 18px 22px;">
         <!-- Header -->
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 18px; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px;">
+        <div style="background: #0e2a5e; color: white; padding: 14px 18px; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px;">
           <div>
             <div style="font-size: 16px; font-weight: 800; letter-spacing: -0.3px;">GÜNLÜK GERÇEKLEŞME — SAHA FORMU</div>
             <div style="font-size: 12px; font-weight: 500; opacity: 0.92; margin-top: 4px;">${escapeHtml(project.name)}</div>
@@ -287,20 +287,20 @@ export default function RealizationPage() {
 
         <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
           <thead>
-            <tr style="background: #10b981; color: white;">
-              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857; width: 60px;">WBS</th>
-              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857;">Açıklama</th>
-              <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857; width: 60px;">Toplam</th>
-              <th style="padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857; width: 44px;">Birim</th>
-              <th style="padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857; width: 110px;">Bugünkü Gerçekleşme</th>
-              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #047857;">Not</th>
+            <tr style="background: #ffffff; color: #0e2a5e; border-bottom: 2px solid #0e2a5e;">
+              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e; width: 60px;">WBS</th>
+              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e;">Açıklama</th>
+              <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e; width: 60px;">Toplam</th>
+              <th style="padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e; width: 44px;">Birim</th>
+              <th style="padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e; width: 110px;">Bugünkü Gerçekleşme</th>
+              <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border: 1px solid #d9e0ec; border-bottom: 2px solid #0e2a5e;">Not</th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((r) => {
               if (r.isHeader) {
-                const bg = r.level === 1 ? "#d1fae5" : "#e0f2fe";
-                const color = r.level === 1 ? "#065f46" : "#075985";
+                const bg = r.level === 1 ? "#f5f7fa" : "#fafbfd";
+                const color = r.level === 1 ? "#0e2a5e" : "#1e3a6e";
                 const weight = r.level === 1 ? 800 : 700;
                 return `
                   <tr style="background: ${bg};">
@@ -342,10 +342,6 @@ export default function RealizationPage() {
             <div style="border-bottom: 1px solid #18181b; height: 32px;"></div>
             <div style="font-size: 10px; font-weight: 700; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; text-align: center;">Şantiye Şefi · İmza</div>
           </div>
-        </div>
-
-        <div style="margin-top: 14px; font-size: 8px; color: #a1a1aa; text-align: center; font-family: 'JetBrains Mono', ui-monospace, monospace;">
-          ${escapeHtml(project.name)} · ${formatDate(date)} · proje-yonetim-platformu
         </div>
       </div>
     `;

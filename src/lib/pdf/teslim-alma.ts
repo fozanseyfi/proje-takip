@@ -95,7 +95,7 @@ function buildMetaBlockHtml(opts: PDFOptions): string {
 
   return `
     <div style="margin-bottom: 14px;">
-      <div style="background: linear-gradient(90deg, #047857 0%, #10b981 100%); color: white; padding: 7px 12px; border-radius: 6px 6px 0 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;">
+      <div style="background: #0e2a5e; color: white; padding: 7px 12px; border-radius: 6px 6px 0 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px;">
         Proje Bilgileri
       </div>
       <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; border-top: none;">
@@ -126,7 +126,7 @@ function buildLegendBlockHtml(mode: TeslimAlmaPDFMode): string {
     `;
   }
   return `
-    <div style="margin-bottom: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 4px solid #047857; border-radius: 4px; font-size: 9.5px; color: #14532d; line-height: 1.5;">
+    <div style="margin-bottom: 12px; padding: 8px 12px; background: #f5f7fa; border-left: 4px solid #0e2a5e; border-radius: 4px; font-size: 9.5px; color: #1a2436; line-height: 1.5;">
       <strong>Doldurma Kuralları:</strong> Her madde için ☐ kutucuğu UYGUN ise <strong style="color:#047857;">✓</strong>, UYGUN DEĞİL ise <strong style="color:#b91c1c;">✗</strong>, ŞARTLI UYGUN ise <strong style="color:#b45309;">◐</strong> olarak işaretlenir. Şartlı/uygunsuz maddelerde açıklama zorunludur.
       <br><strong>Severity:</strong> <span style="color:#b91c1c; font-weight:700;">Major</span> = kapatılmadan geçici kabul yapılamaz · <span style="color:#71717a; font-weight:700;">Minor</span> = punch-list'e alınır.
     </div>
@@ -226,7 +226,7 @@ function buildSectionHtml(
       const rowsHtml = items.map((it) => buildItemRowHtml(it, results[it.id], mode)).join("");
       return `
         <div style="margin-top:10px; page-break-inside: avoid;">
-          <div style="padding:5px 10px; background:#f0fdf4; border-left:3px solid #047857; font-size:10.5px; font-weight:800; color:#14532d;">
+          <div style="padding:5px 10px; background:#f5f7fa; border-left:3px solid #0e2a5e; font-size:10.5px; font-weight:800; color:#0e2a5e;">
             ${escapeHtml(sub.id)} · ${escapeHtml(sub.title)}
           </div>
           <table style="width:100%; border-collapse:collapse; margin-top:2px;">
@@ -242,10 +242,10 @@ function buildSectionHtml(
 
   return `
     <div style="margin-top:16px; page-break-inside: auto;">
-      <div style="background: linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:8px 14px; border-radius:5px 5px 0 0;">
+      <div style="background: #0e2a5e; color:white; padding:8px 14px; border-radius:5px 5px 0 0;">
         <span style="font-size:14px; font-weight:900; letter-spacing:-0.2px;">${escapeHtml(section.id)}</span>
         <span style="font-size:13px; font-weight:800; margin-left:8px;">${escapeHtml(section.title)}</span>
-        <div style="font-size:9.5px; color:#d1fae5; font-weight:500; margin-top:2px; line-height:1.4;">${escapeHtml(section.description)}</div>
+        <div style="font-size:9.5px; color:#b7c4de; font-weight:500; margin-top:2px; line-height:1.4;">${escapeHtml(section.description)}</div>
       </div>
       <div style="background:white; border:1px solid #e2e8f0; border-top:none; border-radius:0 0 5px 5px; padding:8px 12px;">
         ${subsectionsHtml}
@@ -269,7 +269,7 @@ function buildSummaryBlockHtml(report: TeslimAlmaReport, totalItems: number): st
 
   return `
     <div style="margin-bottom: 14px;">
-      <div style="background: linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
+      <div style="background: #0e2a5e; color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
         Denetim Özeti
       </div>
       <div style="border:1px solid #e2e8f0; border-top:none; padding:10px 12px; background:white;">
@@ -320,7 +320,7 @@ function buildSignatureBlockHtml(report: TeslimAlmaReport): string {
   `;
   return `
     <div style="margin-top:18px; page-break-inside: avoid;">
-      <div style="background: linear-gradient(90deg, #047857 0%, #10b981 100%); color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
+      <div style="background: #0e2a5e; color:white; padding:7px 12px; border-radius:6px 6px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;">
         İmzalar
       </div>
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none;">
@@ -516,8 +516,8 @@ async function _renderTeslimAlmaPDF(opts: PDFOptions): Promise<void> {
       // HEADER — emerald gradient (yatay strip-blend)
       const strips = 200;
       const stripW = pageW / strips;
-      const from: [number, number, number] = [4, 120, 87];
-      const to: [number, number, number] = [16, 185, 129];
+      const from: [number, number, number] = [14, 42, 94];
+      const to: [number, number, number] = [14, 42, 94];
       for (let s = 0; s < strips; s++) {
         const t = s / (strips - 1);
         const r = Math.round(from[0] + (to[0] - from[0]) * t);
@@ -530,7 +530,7 @@ async function _renderTeslimAlmaPDF(opts: PDFOptions): Promise<void> {
       // Sol — başlık
       pdf.setFont("Geist", "bold");
       pdf.setFontSize(6.5);
-      pdf.setTextColor(220, 252, 231);
+      pdf.setTextColor(143, 163, 201);
       pdf.text(opts.mode === "ncr" ? "UYGUNSUZLUK RAPORU" : "DENETİM RAPORU", marginX, 6);
 
       pdf.setFont("Geist", "bold");
@@ -541,7 +541,7 @@ async function _renderTeslimAlmaPDF(opts: PDFOptions): Promise<void> {
       // Alt başlık + proje
       pdf.setFont("Geist", "normal");
       pdf.setFontSize(8.5);
-      pdf.setTextColor(209, 250, 229);
+      pdf.setTextColor(183, 196, 222);
       const parts = [subtitleMap[opts.mode], opts.project.name].filter(Boolean);
       const subText = parts.join("  ·  ");
       const maxW = pageW - marginX * 2 - 50;
@@ -567,11 +567,11 @@ async function _renderTeslimAlmaPDF(opts: PDFOptions): Promise<void> {
 
       pdf.setFont("Geist", "normal");
       pdf.setFontSize(7.5);
-      pdf.setTextColor(209, 250, 229);
+      pdf.setTextColor(183, 196, 222);
       pdf.text(`Sayfa ${i} / ${totalPages}`, pageW - marginX, 14.5, { align: "right" });
 
       pdf.setFontSize(7);
-      pdf.setTextColor(167, 243, 208);
+      pdf.setTextColor(143, 163, 201);
       pdf.text("v1.0", pageW - marginX, 19, { align: "right" });
 
     }
